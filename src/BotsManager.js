@@ -121,6 +121,12 @@ class BotsManager {
       return { ok: false, message: `发送失败: ${e.message}` };
     }
   }
+
+  /** 拉取某实例最近的日志（供面板） */
+  getLogs(name, limit) {
+    const bot = this.bots.get(name);
+    return bot ? bot.getLogs(limit) : [];
+  }
 }
 
 module.exports = { BotsManager };

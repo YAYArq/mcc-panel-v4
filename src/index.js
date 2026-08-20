@@ -42,17 +42,21 @@ async function main() {
   const guard = new McsmGuard({ config });
   guard.start();
 
-  // 3. 优雅退出
+  // 3. 独立 Web 面板 + 健康检查（统一端口 10270，可用 PORT / PANEL_HOST / PANEL_TOKEN 覆盖）
+  const panel = require('./panel').startPanel({ manager, port: 10270 });
+
+  // 4. 优雅退出
   const shutdown = async (signal) => {
     logger.info(`\n收到 ${signal}，正在停止...`);
     guard.stop();
     manager.stop();
+    try { panel.close(); } catch (e) { /* ignore */ }
     process.exit(0);
   };
   process.once('SIGINT', () => void shutdown('SIGINT'));
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
-  // 4. 状态定期打印（每 60s，便于观察，也可在 logger 级别静默）
+  // 5. 状态定期打印（每 60s，便于观察，也可在 logger 级别静默）
   setInterval(() => {
     if (logger.level === 'debug') {
       logger.debug('状态快照:');
@@ -62,7 +66,7 @@ async function main() {
     }
   }, 60000).unref?.();
 
-  // 5. 一次性打印启动摘要
+  // 6. 一次性打印启动摘要
   logger.info(`已加载 ${manager.bots.size} 个挂机假人`);
   for (const s of manager.getSnapshots()) {
     logger.info(`  - ${s.name} → ${s.host}:${s.port} (${s.username})，tpa规则${s.tpaRules}条，定时指令${s.scheduledCommands}条，定时动作${s.scheduledActions}种`);

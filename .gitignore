@@ -15,3 +15,6 @@ id_rsa
 id_ed25519
 credentials*
 secrets.*
+
+# 本地会话元数据（不进仓库）
+.reasonix/

@@ -27,7 +27,8 @@ class AfkBot {
   constructor(scfg, options = {}) {
     this.cfg = scfg;
     this.options = options;
-    this.log = logger.scope(scfg.name || scfg.username || 'bot');
+    this.logBuffer = []; // 每实例日志环形缓冲（供面板展示，最多 200 条）
+    this.log = this._makeLogger(scfg.name || scfg.username || 'bot');
 
     this.bot = null;
     this.online = false;
@@ -35,6 +36,31 @@ class AfkBot {
     this._shutdown = false;
     this.tpaRules = resolveRequestRules(scfg, logger);
     this.scheduler = new Scheduler({ tickMs: options.schedulerTickMs || 1000 });
+  }
+
+  /** 包装全局 logger：同时向本实例 logBuffer 记录，供面板读取 */
+  _makeLogger(name) {
+    const raw = logger.scope(name);
+    const self = this;
+    const buf = (level, args) => {
+      try {
+        const msg = args.map((a) => (a instanceof Error ? (a.stack || a.message) : String(a))).join(' ');
+        self.logBuffer.push({ ts: Date.now(), level, bot: name, msg });
+        if (self.logBuffer.length > 200) self.logBuffer.shift();
+      } catch (e) { /* ignore */ }
+    };
+    return {
+      debug: (...a) => { buf('debug', a); raw.debug(...a); },
+      info: (...a) => { buf('info', a); raw.info(...a); },
+      warn: (...a) => { buf('warn', a); raw.warn(...a); },
+      error: (...a) => { buf('error', a); raw.error(...a); }
+    };
+  }
+
+  /** 供面板/API 拉取本实例最近的日志 */
+  getLogs(limit) {
+    const n = Math.max(1, Math.min(limit || 100, 200));
+    return this.logBuffer.slice(-n);
   }
 
   start() {

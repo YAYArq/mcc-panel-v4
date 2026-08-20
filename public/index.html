@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>挂机假人 · 控制面板</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <span class="brand">挂机假人</span>
+        <span class="sidebar-sub">AFK BOT PANEL</span>
+      </div>
+      <nav class="main-tabs" id="main-tabs">
+        <button class="main-tab active" data-view="instances" title="01 实例"><span class="nav-ico">01</span><span class="nav-label">实例</span></button>
+        <button class="main-tab" data-view="logs" title="02 全局日志"><span class="nav-ico">02</span><span class="nav-label">日志</span></button>
+        <button class="main-tab" data-view="config" title="03 配置"><span class="nav-ico">03</span><span class="nav-label">配置</span></button>
+      </nav>
+      <div class="sidebar-status">
+        <span id="conn-status" class="conn-status on">● 在线</span>
+        <span class="perf-status">面板 v1.0 · 端口 10270</span>
+      </div>
+    </aside>
+
+    <main class="main">
+
+      <!-- ============ Hero ============ -->
+      <section class="sec sec-hero" id="sec-hero">
+        <div class="hero">
+          <div class="hero-title">挂机假人</div>
+          <div class="hero-sub">MINECRAFT AFK BOT · 自动接取 TPA/TPAHERE · 多服务器正则 · 定时指令/动作 · MCSM 守护</div>
+          <div class="hero-stats">
+            <div class="hero-stat"><span class="hero-stat-num" id="h-instances">0</span><span class="hero-stat-label">实例</span></div>
+            <div class="hero-stat"><span class="hero-stat-num" id="h-online">0</span><span class="hero-stat-label">在线</span></div>
+            <div class="hero-stat"><span class="hero-stat-num" id="h-offline">0</span><span class="hero-stat-label">离线</span></div>
+            <div class="hero-stat"><span class="hero-stat-num" id="h-tpa">0</span><span class="hero-stat-label">TPA 规则</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 01 实例 ============ -->
+      <section class="sec" id="sec-instances">
+        <header class="sec-head">
+          <span class="sec-no">01</span>
+          <h2 class="sec-title">实例</h2>
+          <span id="list-summary" class="list-summary"></span>
+        </header>
+        <div class="toolbar">
+          <span id="selected-count" class="selected-count"></span>
+          <div class="toolbar-actions">
+            <button id="btn-refresh" class="btn btn-sm" title="刷新实例列表">刷新</button>
+            <button id="btn-start-all" class="btn btn-sm" title="启动全部实例">全部启动</button>
+            <button id="btn-stop-all" class="btn btn-sm" title="停止全部实例">全部停止</button>
+          </div>
+        </div>
+        <div id="instance-grid" class="instance-grid"></div>
+        <div id="empty-state" class="empty-state hidden"><div class="empty-icon">00</div><p id="empty-text">暂无实例 · 请在 config.json 的 servers 中配置账号</p></div>
+      </section>
+
+      <!-- ============ 02 实例详情 ============ -->
+      <section class="sec hidden" id="sec-detail">
+        <header class="sec-head">
+          <span class="sec-no">02</span>
+          <h2 class="sec-title" id="detail-title">实例详情</h2>
+          <button id="btn-back" class="btn btn-sm">← 返回</button>
+        </header>
+        <div class="tab-bar" id="detail-tabs">
+          <button class="tab active" data-tab="status">状态</button>
+          <button class="tab" data-tab="command">指令</button>
+          <button class="tab" data-tab="log">日志</button>
+        </div>
+
+        <section id="tab-status" class="tab-panel">
+          <div class="panel-grid">
+            <div class="panel-box">
+              <div class="panel-title">实例状态</div>
+              <div id="st-basic" class="kv-list"></div>
+            </div>
+            <div class="panel-box">
+              <div class="panel-title">传送与调度</div>
+              <div id="st-sched" class="kv-list"></div>
+            </div>
+          </div>
+          <div class="config-toolbar">
+            <button id="btn-inst-start" class="btn btn-sm" title="启动该实例">启动</button>
+            <button id="btn-inst-stop" class="btn btn-sm" title="停止该实例">停止</button>
+            <button id="btn-inst-restart" class="btn btn-sm" title="重启该实例">重启</button>
+            <span id="st-result" class="command-result"></span>
+          </div>
+        </section>
+
+        <section id="tab-command" class="tab-panel hidden">
+          <p class="panel-hint">向该实例的控制台发送聊天/指令（实现聊天中的自动 TPA 与定时指令依赖此）</p>
+          <form id="command-form" class="command-form">
+            <input id="command-input" class="input mono-input" placeholder="如 /home 或 /say hello" autocomplete="off">
+            <button type="submit" class="btn btn-primary">发送</button>
+          </form>
+          <span id="cmd-result" class="command-result"></span>
+          <div class="command-history-wrap">
+            <div class="panel-title">指令历史</div>
+            <div id="command-history" class="command-history"></div>
+          </div>
+        </section>
+
+        <section id="tab-log" class="tab-panel hidden">
+          <div class="config-toolbar">
+            <label class="check-all"><input type="checkbox" id="chk-auto" checked><span>自动滚动</span></label>
+            <span class="panel-hint">该实例最近 200 条日志</span>
+          </div>
+          <div id="log-box" class="log-box"></div>
+        </section>
+      </section>
+
+      <!-- ============ 02 全局日志 ============ -->
+      <section class="sec hidden" id="sec-logs">
+        <header class="sec-head">
+          <span class="sec-no">02</span>
+          <h2 class="sec-title">日志</h2>
+          <span class="list-summary">各实例最近的运行日志</span>
+        </header>
+        <div class="config-toolbar">
+          <label class="form-label" style="flex-direction:row;align-items:center;gap:8px;display:flex">选择实例
+            <select id="logs-bot" class="select" style="width:auto"></select>
+          </label>
+          <label class="form-label" style="flex-direction:row;align-items:center;gap:8px;display:flex;margin:0"><input type="checkbox" id="logs-auto" checked>自动刷新</label>
+        </div>
+        <div id="logs-box" class="log-box" style="height:600px"></div>
+      </section>
+
+      <!-- ============ 03 配置 ============ -->
+      <section class="sec hidden" id="sec-config">
+        <header class="sec-head">
+          <span class="sec-no">03</span>
+          <h2 class="sec-title">配置</h2>
+          <span class="list-summary">config.json（服务器上编辑生效，重启服务后加载）</span>
+        </header>
+        <div class="config-toolbar">
+          <button id="config-refresh" class="btn btn-sm">刷新</button>
+          <span class="panel-hint">编辑服务器上 /opt/afk-bot/config.json 后用 systemctl restart afk-bot 生效</span>
+        </div>
+        <div id="config-box" class="table-wrap"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
