@@ -56,6 +56,11 @@ class AfkBot {
     // 自动重连退避
     this._reconnectBackoffStep = 0;
     this._reconnectDelay = 0;
+    // 微软登录钩子状态
+    this._disposed = false;
+    this._msaCodeLogged = false;
+    this._msaRestore = null;
+    this._msaTimer = null;
   }
 
   /** 统一的日志追加：带自增 seq（供增量拉取/gap 检测），环形上限 200 */
@@ -110,6 +115,9 @@ class AfkBot {
 
   stop() {
     this._shutdown = true;
+    this._disposed = true;
+    // 立即还原 console/stdout 钩子（避免 stop 后仍拦截/引用）
+    try { if (this._msaRestore) this._msaRestore(); } catch (e) { /* ignore */ }
     this.scheduler.stop();
     if (this.bot) {
       try { this.bot.end('shutdown'); } catch (e) { /* ignore */ }
@@ -117,46 +125,49 @@ class AfkBot {
     }
   }
 
-  /** 微软账号：捕获设备码登录链接/code 转发到面板日志（auth=microsoft 时调用） */
   /**
    * 微软账号：捕获 prismarine-auth 设备码登录输出（链接 + code）转发到面板日志。
-   * 注意：prismarine-auth 用 console.info 打印「Please authenticate now」和 message，
-   * 因此需要拦截 console.info（以及 log/warn/error），否则登录 code 不会出现在面板日志。
+   * 拦截 console.*（prismarine-auth 用 console.info/log 打印）以及 process.stdout.write
+   * （部分库直接写 stdout），确保 code 不遗漏。仅 auth=microsoft 时启用，2.5 分钟后自动还原。
    */
   _hookMsa() {
     if (this.cfg.auth !== 'microsoft') return;
     const self = this;
-    const methods = ['log', 'info', 'warn', 'error'];
-    const orig = {};
-    for (const m of methods) orig[m] = console[m] ? console[m].bind(console) : (() => {});
+    const DEVICE_RE = /microsoft\.com\/link|aka\.ms\/devicelogin|enter the code|open the page|sign in|please authenticate|user_code|otc=|device code|设备码|登录代码|验证码/i;
     const sniff = (s) => {
-      if (!s) return;
-      // prismarine-auth 设备码 message 形如：
-      //   To sign in, use a web browser to open the page <uri> and use the code <CODE> or visit http://microsoft.com/link?otc=<CODE>
-      if (/microsoft\.com\/link|aka\.ms\/devicelogin|enter the code|要登录|open the page|sign in|Please authenticate|user_code|otc=/.test(s)) {
-        try {
-          // 提取链接与 code，整理成清晰提示
-          const uri = (s.match(/open the page\s+(\S+)/i) || s.match(/https?:\/\/\S+\/link[^ ]*/i) || [])[1] || (s.match(/aka\.ms\/devicelogin[^ ]*/i) || [])[0] || '';
-          const code = (s.match(/the code\s+([A-Z0-9]+)/i) || s.match(/otc=([A-Z0-9]+)/i) || [])[1] || '';
-          const base = '【微软登录】';
-          if (uri && code) {
-            self._appendLog({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: `${base}请在浏览器打开 ${uri}，输入登录代码: ${code}` });
-          } else {
-            self._appendLog({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: base + s });
-          }
-        } catch (e) { /* ignore */ }
-      }
+      if (!s || !DEVICE_RE.test(s)) return;
+      try {
+        const uri = (s.match(/open the page\s+(\S+)/i) || s.match(/https?:\/\/\S+\/link[^ ]*/i) || s.match(/aka\.ms\/devicelogin[^ ]*/i) || [''])[1] || (s.match(/https?:\/\/\S+\/link[^ ]*/i) || [''])[0] || (s.match(/aka\.ms\/devicelogin[^ ]*/i) || [''])[0] || '';
+        const code = (s.match(/the code\s+([A-Z0-9]{4,})/i) || s.match(/otc=([A-Z0-9]{4,})/i) || [])[1] || '';
+        if (code && !self._msaCodeLogged) {
+          self._msaCodeLogged = true;
+          self._appendLog({ ts: Date.now(), level: 'warn', bot: self.cfg.name, msg: `【⚠️ 微软登录】请在浏览器打开 ${uri || 'https://www.microsoft.com/link'}，输入登录代码：${code}` });
+        } else if (!self._msaCodeLogged) {
+          self._appendLog({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: `【微软登录】${s}` });
+        }
+      } catch (e) { /* ignore */ }
     };
-    let restored = false;
+    // 保存原始引用，2.5 分钟后还原
+    const origStdoutWrite = process.stdout.write.bind(process.stdout);
+    const origConsole = {};
+    const methods = ['log', 'info', 'warn', 'error'];
+    for (const m of methods) origConsole[m] = console[m] ? console[m].bind(console) : (() => {});
+    const restored = { flag: false };
     const restore = () => {
-      if (restored) return; restored = true;
-      for (const m of methods) console[m] = orig[m];
+      if (restored.flag) return; restored.flag = true;
+      for (const m of methods) console[m] = origConsole[m];
+      process.stdout.write = origStdoutWrite;
       if (this._msaTimer) clearTimeout(this._msaTimer);
     };
-    // 包装各方法：转发到面板日志，同时保持原输出（systemd journal 也能看到）
     for (const m of methods) {
-      console[m] = function (...a) { sniff(a.map((x) => String(x)).join(' ')); return orig[m].apply(console, a); };
+      console[m] = function (...a) { const s = a.map((x) => String(x)).join(' '); if (!self._disposed) sniff(s); return origConsole[m].apply(console, a); };
     }
+    // 兜底：直接写 stdout 的 code 输出（注意不得在 sniff 里调用 console/stdout 以免递归）
+    process.stdout.write = function (chunk, enc, cb) {
+      try { if (!self._disposed) sniff(typeof chunk === 'string' ? chunk : chunk.toString('utf8')); } catch (e) { /* ignore */ }
+      return origStdoutWrite(chunk, enc, cb);
+    };
+    this._msaRestore = restore;
     if (this._msaTimer) clearTimeout(this._msaTimer);
     this._msaTimer = setTimeout(restore, 150000);
   }
