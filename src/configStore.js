@@ -83,9 +83,7 @@ class ConfigStore {
       tpaWhiteListPlayers: Array.isArray(scfg.tpaWhiteListPlayers) ? scfg.tpaWhiteListPlayers : [],
       scheduledCommands: Array.isArray(scfg.scheduledCommands) ? scfg.scheduledCommands : [],
       scheduledActions: Array.isArray(scfg.scheduledActions) ? scfg.scheduledActions : [],
-      botOptions: scfg.botOptions || {},
-      webInventoryPort: Number(scfg.webInventoryPort) || 0,
-      webInventoryDir: scfg.webInventoryDir || undefined
+      botOptions: scfg.botOptions || {}
     };
     // 去掉 auth 为 offline 时多余的 password
     delete entry.password;
@@ -109,7 +107,7 @@ class ConfigStore {
     if (!target) return { ok: false, message: `实例不存在: ${name}` };
 
     // 允许更新的字段白名单（name 单独处理以支持改名）
-    const keys = ['host', 'port', 'username', 'auth', 'version', 'acceptTpa', 'tpa', 'tpaWhiteListOnly', 'tpaWhiteListPlayers', 'scheduledCommands', 'scheduledActions', 'botOptions', 'enabled', 'webInventoryPort', 'webInventoryDir'];
+    const keys = ['host', 'port', 'username', 'auth', 'version', 'acceptTpa', 'tpa', 'tpaWhiteListOnly', 'tpaWhiteListPlayers', 'scheduledCommands', 'scheduledActions', 'botOptions', 'enabled'];
     for (const k of keys) {
       if (patch[k] !== undefined) target[k] = patch[k];
     }

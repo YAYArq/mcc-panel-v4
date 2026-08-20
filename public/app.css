@@ -439,6 +439,19 @@ input[type="radio"]:checked::after {
 [data-opbar].busy .btn:not([disabled]) { opacity: .55; pointer-events: none; }
 [data-opbar].busy .btn:not([disabled])::after { content: "…"; }
 
-/* 网页背包内嵌 iframe（直接集成到面板详情） */
-.webinv-wrap { margin-top: 14px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: #120c14; }
-.webinv-iframe { display: block; width: 100%; height: 720px; border: 0; background: #120c14; }
+/* 背包查看与调整 */
+.inv-head-title { font-weight: 700; font-size: 13px; margin: 12px 0 8px; color: var(--accent-2); }
+.inv-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; }
+.inv-hotbar { margin-bottom: 6px; }
+.inv-cell { position: relative; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; padding: 6px; min-height: 52px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px; }
+.inv-cell:hover { border-color: var(--accent); }
+.inv-empty { border-style: dashed; min-height: 52px; }
+.inv-item { font-size: 11px; text-align: center; color: var(--text); word-break: break-all; line-height: 1.2; }
+.inv-count { font-family: var(--mono); font-size: 11px; color: var(--accent-2); }
+.inv-ench { position: absolute; top: 2px; right: 4px; color: var(--yellow); font-size: 11px; }
+.inv-cell-ops { display: flex; gap: 4px; margin-top: 4px; }
+.inv-cell-ops .btn { padding: 1px 6px; font-size: 10.5px; }
+.inv-hotbar-cell { cursor: pointer; }
+.inv-bar-idx { position: absolute; top: 2px; left: 5px; font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+.muted.ok { color: var(--green); }
+.muted.err { color: var(--red); }

@@ -76,6 +76,7 @@
         </header>
         <div class="tab-bar" id="detail-tabs">
           <button class="tab active" data-tab="status">状态</button>
+          <button class="tab" data-tab="inventory">背包</button>
           <button class="tab" data-tab="config">配置</button>
           <button class="tab" data-tab="command">指令</button>
           <button class="tab" data-tab="log">日志</button>
@@ -97,12 +98,22 @@
             <button id="btn-inst-stop" class="btn btn-sm">停止</button>
             <button id="btn-inst-restart" class="btn btn-sm">重启</button>
             <button id="btn-inst-delete" class="btn btn-sm btn-danger">删除实例</button>
-            <button id="webinv-toggle" class="btn btn-sm" hidden>🎒 查看网页背包</button>
             <span id="st-result" class="command-result"></span>
           </div>
-          <div id="webinv-wrap" class="webinv-wrap hidden">
-            <iframe id="webinv-iframe" class="webinv-iframe" src="" frameborder="0" title="网页背包"></iframe>
+        </section>
+
+        <!-- 背包查看与调整 -->
+        <section id="tab-inventory" class="tab-panel hidden">
+          <div class="config-toolbar">
+            <button id="inv-refresh" class="btn btn-sm">刷新背包</button>
+            <span class="panel-hint">点击物品：拿主手；右键物品按钮：丢出。快捷栏 1-9 点击切主手。</span>
+            <span id="inv-status" class="muted"></span>
           </div>
+          <p id="inv-hint" class="panel-hint"></p>
+          <div class="inv-head-title">快捷栏（主手）</div>
+          <div id="inv-hotbar" class="inv-grid inv-hotbar"></div>
+          <div class="inv-head-title">背包 / 窗口</div>
+          <div id="inv-main" class="inv-grid"></div>
         </section>
 
         <!-- 配置编辑：连接 + 登录方式(offline/microsoft) + TPA正则 + 定时任务 -->
@@ -123,7 +134,6 @@
             <label class="form-label">自动接取 TPA · acceptTpa
               <select id="cf-acceptTpa" class="select"><option value="true">开</option><option value="false">关</option></select>
             </label>
-            <label class="form-label">网页背包端口 · webInventoryPort <input id="cf-webinv" type="number" class="input" placeholder="0=关闭；填端口号(如 18001)在线时自动启动网页背包"><span class="muted">填 >0 的端口号，实例在线时自动打开可访问的网页背包</span></label>
           </div>
           <p class="auth-note" id="auth-note" hidden>微软账号说明：保存/启动后，系统会用设备码登录。请打开 <b>https://www.microsoft.com/link</b>，输入日志里显示的 Code 完成授权（登录一次后 token 会缓存）。</p>
 

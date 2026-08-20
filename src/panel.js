@@ -94,8 +94,7 @@ function startPanel(opts = {}) {
       tpaWhiteListOnly: scfg.tpaWhiteListOnly === true,
       tpaWhiteListPlayers: Array.isArray(scfg.tpaWhiteListPlayers) ? scfg.tpaWhiteListPlayers : [],
       scheduledCommands: scfg.scheduledCommands || [], scheduledActions: scfg.scheduledActions || [],
-      botOptions: scfg.botOptions || {},
-      webInventoryPort: Number(scfg.webInventoryPort) || 0
+      botOptions: scfg.botOptions || {}
     };
   }
 
@@ -169,6 +168,16 @@ function startPanel(opts = {}) {
       // POST 停止寻路
       if (req.method === 'POST' && action === 'stop') {
         return json(res, 200, manager.stopPath(name));
+      }
+
+      // GET 背包视图
+      if (req.method === 'GET' && action === 'inventory') {
+        return json(res, 200, manager.getInventory(name));
+      }
+      // POST 背包操作 { action: equipSlot|setBar|move|drop, ...params }
+      if (req.method === 'POST' && action === 'inventory') {
+        const body = await readBody(req);
+        return json(res, 200, manager.doInventory(name, body.action, body));
       }
 
       // GET 单实例

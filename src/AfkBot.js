@@ -3,16 +3,15 @@
 const path = require('path');
 const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
-const inventoryViewer = require('mineflayer-web-inventory');
 const vec3 = require('vec3');
-const logger = require('./logger');
-const { resolveRequestRules, matchRequest, classifyResult } = require('./regexes');
+const logger = require('./logger');const { resolveRequestRules, matchRequest, classifyResult } = require('./regexes');
 const { Scheduler } = require('./scheduler');
 const { normalizeMinecraftVersion } = require('./util/version');
 
-// 重连参数
+// 重连参数（无限自动重连 + 指数退避 5s→最大30s，避免服务器波动期高频轰击）
 const RECONNECT_DELAY_MS = 5000;
-const RECONNECT_MAX_ATTEMPTS = 20;
+const RECONNECT_MAX_DELAY_MS = 30000;
+const RECONNECT_BACKOFF = 1.5;
 
 /**
  * 单个挂机假人实例。
@@ -51,6 +50,9 @@ class AfkBot {
     };
     this.tpaRules = resolveRequestRules(scfg, logger);
     this.scheduler = new Scheduler({ tickMs: options.schedulerTickMs || 1000 });
+    // 自动重连退避
+    this._reconnectBackoffStep = 0;
+    this._reconnectDelay = 0;
   }
 
   /** 包装全局 logger：同时向本实例 logBuffer 记录，供面板读取 */
@@ -183,13 +185,14 @@ class AfkBot {
     bot.once('spawn', () => {
       this.online = true;
       this.reconnectAttempts = 0;
+      this._reconnectBackoffStep = 0;
+      this._reconnectDelay = 0;
       this._onlineSince = Date.now();
       // 健康：记录本次会话上线时间，累计上次会话时长
       this.health.sessionOnlineMs = 0;
       this.health.lastOnlineAt = Date.now();
       const p = bot.entity && bot.entity.position;
       this.log.info(`已上线${p ? `，坐标 (${Math.floor(p.x)}, ${Math.floor(p.y)}, ${Math.floor(p.z)})` : ''}`);
-      this.maybeStartWebInventory();
       this.emit('spawn');
     });
 
@@ -325,16 +328,22 @@ class AfkBot {
 
   scheduleReconnect() {
     if (this._shutdown) return;
-    if (this.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
-      this.log.error(`连续 ${RECONNECT_MAX_ATTEMPTS} 次重连失败，停止自动重连`);
-      return;
-    }
     this.reconnectAttempts += 1;
+    // 指数退避：5s、7.5s、11.25s ... 封顶 30s，持续自动重连（无限）
+    const delay = Math.min(
+      RECONNECT_MAX_DELAY_MS,
+      RECONNECT_DELAY_MS * Math.pow(RECONNECT_BACKOFF, this._reconnectBackoffStep++)
+    );
+    this._reconnectDelay = delay;
+    const attempt = this.reconnectAttempts;
+    const sec = Math.round(delay / 1000);
+    this.log.info(`第 ${attempt} 次重连（${sec}s 后尝试，退避中...）`);
     setTimeout(() => {
       if (this._shutdown) return;
-      this.log.info(`第 ${this.reconnectAttempts} 次重连...`);
+      if (this._reconnectDelay !== delay) return; // 退避已更新，忽略过期定时器
+      this.log.info(`开始第 ${attempt} 次重连`);
       this.createBot();
-    }, RECONNECT_DELAY_MS);
+    }, delay);
   }
 
   /** 设置定时指令与定时动作 */
@@ -545,25 +554,6 @@ class AfkBot {
   }
 
   /**
-   * 网页背包：按配置端口启动 mineflayer-web-inventory（每实例只启动一次）。
-   * 配置：webInventoryPort>0 才会启动；webInventoryDir 为静态资源目录。
-   */
-  maybeStartWebInventory() {
-    const port = Number(this.cfg.webInventoryPort) || 0;
-    if (port <= 0) return;
-    if (this._webInvStarted) return;
-    try {
-      const dir = path.resolve(this.cfg.webInventoryDir || path.join(__dirname, '..', '.webinventory'), this.cfg.name);
-      inventoryViewer(this.bot, { port, webPath: dir, startOnLoad: true });
-      this._webInvStarted = true;
-      this.webInventoryPort = port;
-      this.log.info(`网页背包已启动 http://<服务器IP>:${port}`);
-    } catch (e) {
-      this.log.error(`网页背包启动失败: ${e && e.message}`);
-    }
-  }
-
-  /**
    * 寻路移动到指定坐标（需要 mineflayer-pathfinder）。依赖 bot 在线。
    * @param {number} x @param {number} y @param {number} z
    * @param {number} [range] 到达容差（格）
@@ -594,6 +584,88 @@ class AfkBot {
     return { ok: false, message: '实例不在线或未加载寻路插件' };
   }
 
+  /**
+   * 背包查看：读取假人背包(36格+快捷栏)与当前打开的窗口(容器)，供面板展示。
+   * 返回 { ok, windowName, slots } slots: [{ slot, name, displayName, count, id, raw }]
+   */
+  getInventoryView() {
+    if (!this.online || !this.bot) return { ok: false, message: '实例不在线' };
+    try {
+      const bot = this.bot;
+      const window = bot.currentWindow || bot.inventory;
+      const slots = (window.slots || []).map((item, i) => {
+        const slotNum = window.inventorySlotToServer ? window.inventorySlotToServer(i) : i;
+        if (!item) return { slot: slotNum, empty: true };
+        const itemName = (item.name || item.type) ? String(item.name || item.type) : '';
+        let displayName = itemName;
+        try {
+          const md = require('minecraft-data')(bot.version || '1.21.11');
+          if (md.items && item.type != null && md.items[item.type]) displayName = md.items[item.type].displayName || itemName;
+        } catch (e) { /* ignore */ }
+        return { slot: slotNum, empty: false, name: itemName, displayName, count: item.count, id: item.type, enchanted: !!(item.enchants && item.enchants.length) };
+      });
+      return { ok: true, windowName: window.title ? window.title.toString() : (window === bot.inventory ? '背包' : '窗口'), slots };
+    } catch (e) {
+      return { ok: false, message: `读取背包失败: ${e.message}` };
+    }
+  }
+
+  /**
+   * 背包操作：
+   *   equipSlot { slot }         —— 把该格的物品装备到主手(从快捷栏/背包拿)
+   *   setBar   { index }         —— 直接切换快捷栏第 index 格为主手
+   *   move     { source, dest }  —— 把 source 格物品移到 dest 格(背包/容器)
+   *   drop     { slot, count }   —— 丢出该格 count 个物品(默认1, 0=全部)
+   */
+  doInventoryAction(action, p) {
+    if (!this.online || !this.bot) return { ok: false, message: '实例不在线' };
+    const bot = this.bot;
+    try {
+      if (action === 'setBar') {
+        const idx = Number(p.index);
+        if (![0,1,2,3,4,5,6,7,8].includes(idx)) return { ok: false, message: '快捷栏索引需 0-8' };
+        bot.setQuickBarSlot(idx);
+        return { ok: true, message: `已切到快捷栏第 ${idx + 1} 格为主手` };
+      }
+      if (action === 'equipSlot') {
+        const slot = Number(p.slot);
+        if (!Number.isFinite(slot)) return { ok: false, message: '缺少 slot' };
+        const window = bot.currentWindow || bot.inventory;
+        const item = window.slots && window.slots[slot];
+        if (!item) return { ok: false, message: '该格没有物品' };
+        // mineflayer equip 需要 Item 对象；用 slot 装备到 hand
+        bot.equip(item, 'hand', (err) => {
+          if (err) this.log.warn(`装备 ${item.name} 到主手失败: ${err.message}`);
+          else this.log.info(`已把 ${item.name} 拿到主手`);
+        });
+        return { ok: true, message: `正在把 ${item.name || '物品'} 装备到主手` };
+      }
+      if (action === 'move') {
+        const s = Number(p.source), d = Number(p.dest);
+        if (!Number.isFinite(s) || !Number.isFinite(d)) return { ok: false, message: '需要 source 和 dest' };
+        bot.moveSlotItem(s, d);
+        return { ok: true, message: `已移动 #${s} → #${d}` };
+      }
+      if (action === 'drop') {
+        const slot = Number(p.slot);
+        const count = Number(p.count) || 1;
+        if (!Number.isFinite(slot)) return { ok: false, message: '缺少 slot' };
+        // 丢出物品：取物品再丢到地面
+        const window = bot.currentWindow || bot.inventory;
+        const item = window.slots && window.slots[slot];
+        if (!item) return { ok: false, message: '该格没有物品' };
+        bot.toss(item, count, (err) => {
+          if (err) this.log.warn(`丢弃物品失败: ${err.message}`);
+          else this.log.info(`已丢出 ${count} 个 ${item.name}`);
+        });
+        return { ok: true, message: `正在丢出 ${count} 个 ${item.name || '物品'}` };
+      }
+      return { ok: false, message: `未知操作: ${action}` };
+    } catch (e) {
+      return { ok: false, message: `操作失败: ${e.message}` };
+    }
+  }
+
   getStatus() {
     const now = Date.now();
     const session = this.online && this._onlineSince ? now - this._onlineSince : 0;
@@ -608,7 +680,6 @@ class AfkBot {
       scheduledCommands: (this.cfg.scheduledCommands || []).length,
       scheduledActions: (this.cfg.scheduledActions || []).length,
       uptime: this.online ? Math.round(session / 1000) : 0,
-      webInventoryPort: Number(this.cfg.webInventoryPort) || 0,
       // ---- 健康监控 ----
       health: {
         sessionOnlineMs: this.online ? session : this.health.sessionOnlineMs,
@@ -623,4 +694,4 @@ class AfkBot {
   }
 }
 
-module.exports = { AfkBot, RECONNECT_DELAY_MS, RECONNECT_MAX_ATTEMPTS };
+module.exports = { AfkBot, RECONNECT_DELAY_MS, RECONNECT_MAX_DELAY_MS };

@@ -134,6 +134,18 @@ class BotsManager {
     if (!bot) return { ok: false, message: `未找到实例: ${name}` };
     return bot.goTo(Number(x), Number(y), Number(z), Number(range) || 1);
   }
+  /** 读取某实例背包视图 */
+  getInventory(name) {
+    const bot = this.bots.get(name);
+    if (!bot) return { ok: false, message: `未找到实例: ${name}` };
+    return bot.getInventoryView();
+  }
+  /** 某实例背包操作(equipSlot/setBar/move/drop) */
+  doInventory(name, action, params) {
+    const bot = this.bots.get(name);
+    if (!bot) return { ok: false, message: `未找到实例: ${name}` };
+    return bot.doInventoryAction(action, params || {});
+  }
   /** 停止某实例寻路 */
   stopPath(name) {
     const bot = this.bots.get(name);

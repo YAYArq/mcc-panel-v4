@@ -147,13 +147,74 @@
   document.querySelectorAll('#detail-tabs .tab').forEach(t => t.addEventListener('click', () => {
     switchTab(t.dataset.tab);
     if (t.dataset.tab === 'config') loadConfigTab();
+    if (t.dataset.tab === 'inventory') loadInventory();
     if (t.dataset.tab === 'log') { clearInterval(logTimer); logTimer = setInterval(() => loadDetailLog(), 3000); }
   }));
   function switchTab(tab) {
     document.querySelectorAll('#detail-tabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-    ['tab-status', 'tab-config', 'tab-command', 'tab-log'].forEach(id => $(id).classList.add('hidden'));
-    $(tab === 'status' ? 'tab-status' : tab === 'config' ? 'tab-config' : tab === 'command' ? 'tab-command' : 'tab-log').classList.remove('hidden');
+    ['tab-status', 'tab-inventory', 'tab-config', 'tab-command', 'tab-log'].forEach(id => $(id).classList.add('hidden'));
+    $(tab === 'status' ? 'tab-status' : tab === 'inventory' ? 'tab-inventory' : tab === 'config' ? 'tab-config' : tab === 'command' ? 'tab-command' : 'tab-log').classList.remove('hidden');
   }
+
+  // ---------- 背包查看与调整 ----------
+  async function loadInventory() {
+    if (!currentInstance) return;
+    const d = await api('/api/instances/' + encodeURIComponent(currentInstance) + '/inventory');
+    if (!d.ok) { $('inv-hint').textContent = d.message || '无法读取背包（实例可能离线）'; $('inv-hotbar').innerHTML = ''; $('inv-main').innerHTML = ''; $('inv-status').textContent = ''; return; }
+    $('inv-hint').textContent = d.windowName || '';
+    $('inv-status').textContent = '' ;
+    const slots = d.slots || [];
+    // 快捷栏：常为槽位末尾 9 个(背包窗口)或按 mineflayer 布局；这里对含多于 9 的窗口，取最可能为快捷栏的槽
+    renderInvSlots(slots);
+  }
+  function slotCell(s) {
+    if (!s || s.empty === true) return '<div class="inv-cell inv-empty"></div>';
+    const hasDrop = s.count > 0;
+    return `<div class="inv-cell" data-slot="${s.slot}">
+      <div class="inv-item">${esc(s.displayName || s.name)}</div>
+      ${s.count > 1 ? `<div class="inv-count">x${esc(s.count)}</div>` : ''}
+      ${s.enchanted ? '<div class="inv-ench" title="附魔">✦</div>' : ''}
+      <div class="inv-cell-ops">
+        <button class="btn btn-sm op-equip" title="装备到主手">拿主手</button>
+        ${hasDrop ? '<button class="btn btn-sm op-drop" title="丢出1个">丢</button>' : ''}
+      </div>
+    </div>`;
+  }
+  function renderInvSlots(slots) {
+    // 快捷栏：mineflayer inventory slots[0..8] 为快捷栏；若非背包窗口则按末尾9格
+    const hotbar = slots.slice(0, 9);
+    const rest = slots.slice(9);
+    $('inv-hotbar').innerHTML = hotbar.map((s, i) =>
+      `<div class="inv-cell inv-hotbar-cell" data-slot="${s ? s.slot : ''}" data-bar="${i}">
+        <span class="inv-bar-idx">${i + 1}</span>
+        ${s && s.empty === false ? `<div class="inv-item">${esc(s.displayName || s.name)}${s.count > 1 ? ' x' + s.count : ''}</div>` : '<div class="inv-empty"></div>'}
+      </div>`).join('');
+    $('inv-main').innerHTML = rest.map(slotCell).join('');
+    // 事件：快捷栏点击切主手
+    document.querySelectorAll('#inv-hotbar .inv-cell').forEach(c => c.addEventListener('click', () => {
+      const bar = c.dataset.bar;
+      if (bar !== undefined) doInv('setBar', { index: Number(bar) });
+    }));
+    // 背包格点击拿主手 / 丢出
+    document.querySelectorAll('#inv-main .inv-cell').forEach(c => {
+      const slot = c.dataset.slot;
+      if (slot === undefined) return;
+      const eq = c.querySelector('.op-equip');
+      if (eq) eq.addEventListener('click', (e) => { e.stopPropagation(); doInv('equipSlot', { slot: Number(slot) }); });
+      const dp = c.querySelector('.op-drop');
+      if (dp) dp.addEventListener('click', (e) => { e.stopPropagation(); doInv('drop', { slot: Number(slot), count: 1 }); });
+    });
+  }
+  async function doInv(action, params) {
+    if (!currentInstance) return;
+    const d = await api('/api/instances/' + encodeURIComponent(currentInstance) + '/inventory', 'POST', { action, ...params });
+    $('inv-status').textContent = d.message || (d.error || '');
+    $('inv-status').className = 'muted ' + (d.ok ? 'ok' : 'err');
+    await new Promise(r => setTimeout(r, 300));
+    loadInventory();
+  }
+  $('inv-refresh').addEventListener('click', loadInventory);
+
 
   async function renderStatus() {
     if (!currentInstance) return;
@@ -169,15 +230,6 @@
     $('st-sched').innerHTML = kv([
       ['TPA 规则数', inst.tpaRules], ['定时指令', inst.scheduledCommands], ['定时动作', inst.scheduledActions]
     ]);
-    // 网页背包：仅当在线且配置端口时显示「查看」按钮，点按在面板内嵌 iframe 查看
-    const wlBtn = $('webinv-toggle');
-    if (inst.online && inst.webInventoryPort) {
-      wlBtn.dataset.port = inst.webInventoryPort;
-      wlBtn.hidden = false;
-    } else {
-      wlBtn.hidden = true;
-      $('webinv-wrap').classList.add('hidden');
-    }
     $('st-result').textContent = '';
   }
   function kv(rows) { return rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>`).join(''); }
@@ -187,20 +239,6 @@
   $('btn-inst-stop').addEventListener('click', () => instAct('stop'));
   $('btn-inst-restart').addEventListener('click', () => instAct('restart'));
   $('btn-inst-delete').addEventListener('click', async () => { if (currentInstance) { await delInstance(currentInstance); switchView('instances'); load(); } });
-  // 在面板详情内嵌 iframe 查看网页背包（直接集成到 web 面板，不另开窗口）
-  $('webinv-toggle').addEventListener('click', () => {
-    const wrap = $('webinv-wrap');
-    if (wrap.classList.contains('hidden')) {
-      const port = $('webinv-toggle').dataset.port;
-      if (port) $('webinv-iframe').src = 'http://' + location.hostname + ':' + port;
-      else $('webinv-iframe').src = '';
-      wrap.classList.remove('hidden');
-      $('webinv-toggle').textContent = '🎒 收起网页背包';
-    } else {
-      wrap.classList.add('hidden');
-      $('webinv-toggle').textContent = '🎒 查看网页背包';
-    }
-  });
   async function instAct(action) {
     if (!currentInstance) return;
     const d = await api('/api/instances/' + encodeURIComponent(currentInstance) + '/' + action, 'POST');
@@ -290,7 +328,6 @@
     $('cf-auth').value = c.auth || 'offline';
     $('cf-version').value = c.version || '';
     $('cf-acceptTpa').value = String(c.acceptTpa !== false);
-    $('cf-webinv').value = c.webInventoryPort || 0;
     $('cf-host').removeAttribute('disabled');
     $('cf-wl-only').value = String(c.tpaWhiteListOnly === true);
     $('cf-wl-players').value = Array.isArray(c.tpaWhiteListPlayers) ? c.tpaWhiteListPlayers.join(', ') : '';
@@ -324,7 +361,6 @@
       acceptTpa: $('cf-acceptTpa').value === 'true',
       tpaWhiteListOnly: $('cf-wl-only').value === 'true',
       tpaWhiteListPlayers: wlPlayers,
-      webInventoryPort: Number($('cf-webinv').value) || 0,
       tpa: { ...(configCache.tpa || {}), patterns: tpaRows.filter(r => r.regex) },
       scheduledCommands: scmdRows.filter(r => r.command),
       scheduledActions: sactRows.filter(r => r.type && r.every)

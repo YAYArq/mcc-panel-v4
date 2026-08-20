@@ -77,10 +77,7 @@ function normalizeServer(s, idx) {
     // 定时动作
     scheduledActions: s.scheduledActions || [],
     // mineflayer 额外选项
-    botOptions: s.botOptions || {},
-    // 网页背包(mineflayer-web-inventory)：port>0 时启动该端口；dir 为静态资源目录
-    webInventoryPort: Number(s.webInventoryPort) || 0,
-    webInventoryDir: s.webInventoryDir || undefined
+    botOptions: s.botOptions || {}
   };
 
   if (!out.host) {
