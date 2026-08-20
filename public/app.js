@@ -169,13 +169,14 @@
     $('st-sched').innerHTML = kv([
       ['TPA 规则数', inst.tpaRules], ['定时指令', inst.scheduledCommands], ['定时动作', inst.scheduledActions]
     ]);
-    // 网页背包入口：仅当在线且配置了端口时显示
-    const wl = $('webinv-link');
+    // 网页背包：仅当在线且配置端口时显示「查看」按钮，点按在面板内嵌 iframe 查看
+    const wlBtn = $('webinv-toggle');
     if (inst.online && inst.webInventoryPort) {
-      wl.href = 'http://' + location.hostname + ':' + inst.webInventoryPort;
-      wl.hidden = false;
+      wlBtn.dataset.port = inst.webInventoryPort;
+      wlBtn.hidden = false;
     } else {
-      wl.hidden = true;
+      wlBtn.hidden = true;
+      $('webinv-wrap').classList.add('hidden');
     }
     $('st-result').textContent = '';
   }
@@ -186,6 +187,20 @@
   $('btn-inst-stop').addEventListener('click', () => instAct('stop'));
   $('btn-inst-restart').addEventListener('click', () => instAct('restart'));
   $('btn-inst-delete').addEventListener('click', async () => { if (currentInstance) { await delInstance(currentInstance); switchView('instances'); load(); } });
+  // 在面板详情内嵌 iframe 查看网页背包（直接集成到 web 面板，不另开窗口）
+  $('webinv-toggle').addEventListener('click', () => {
+    const wrap = $('webinv-wrap');
+    if (wrap.classList.contains('hidden')) {
+      const port = $('webinv-toggle').dataset.port;
+      if (port) $('webinv-iframe').src = 'http://' + location.hostname + ':' + port;
+      else $('webinv-iframe').src = '';
+      wrap.classList.remove('hidden');
+      $('webinv-toggle').textContent = '🎒 收起网页背包';
+    } else {
+      wrap.classList.add('hidden');
+      $('webinv-toggle').textContent = '🎒 查看网页背包';
+    }
+  });
   async function instAct(action) {
     if (!currentInstance) return;
     const d = await api('/api/instances/' + encodeURIComponent(currentInstance) + '/' + action, 'POST');

@@ -438,3 +438,7 @@ input[type="radio"]:checked::after {
 .btn.is-disabled:hover { box-shadow: none; border-color: var(--border-strong); }
 [data-opbar].busy .btn:not([disabled]) { opacity: .55; pointer-events: none; }
 [data-opbar].busy .btn:not([disabled])::after { content: "…"; }
+
+/* 网页背包内嵌 iframe（直接集成到面板详情） */
+.webinv-wrap { margin-top: 14px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: #120c14; }
+.webinv-iframe { display: block; width: 100%; height: 720px; border: 0; background: #120c14; }
