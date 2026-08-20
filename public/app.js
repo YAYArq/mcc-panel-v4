@@ -70,34 +70,64 @@
     $('list-summary').textContent = `${instances.length} 个实例 · ${online} 在线`;
     $('empty-state').classList.toggle('hidden', instances.length > 0);
     if (!instances.length) { grid.innerHTML = ''; return; }
-    grid.innerHTML = instances.map((i) => `
-      <div class="inst-card" data-name="${esc(i.name)}">
-        <div class="card-top">
-          <span class="card-name">${esc(i.name)}</span>
-          <span class="badge ${i.online ? 'online' : 'offline'}">${i.online ? '在线' : '离线'}</span>
-        </div>
-        <div class="card-meta">${esc(i.username)} @ ${esc(i.host)}:${esc(i.port)}</div>
-        <div class="card-cmd">TPA ${i.tpaRules}条 · 定时指令 ${i.scheduledCommands}条 · 动作 ${i.scheduledActions}种${i.online ? ` · 在线 ${fmtDur(i.uptime * 1000)}` : ''}</div>
-        <div class="card-actions">
-          <button data-act="start" class="btn ${!i.online ? 'on' : ''}">启动</button>
-          <button data-act="stop">停止</button>
-          <button data-act="restart">重启</button>
-          <button data-act="delete" class="btn-danger">删除</button>
-          <button data-act="open" class="btn-primary">详情</button>
-        </div>
-      </div>`).join('');
-    grid.querySelectorAll('.inst-card').forEach(card => {
-      const name = card.dataset.name;
-      card.querySelectorAll('button').forEach(btn => btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const act = btn.dataset.act;
-        if (act === 'delete') { await delInstance(name); return; }
-        if (act === 'open') { openDetail(name); return; }
-        await api('/api/instances/' + encodeURIComponent(name) + '/' + act, 'POST');
-        load();
-      }));
-    });
+    grid.innerHTML = instances.map(createCardHtml).join('');
   }
+
+  // ---- 实例操作按钮（重构：集中定义，按在线状态联动可用性）----
+  function actionButtons(inst) {
+    const online = !!inst.online;
+    const btn = (act, label, cls, enabled, title) =>
+      `<button type="button" class="btn ${cls || ''}${!enabled ? ' is-disabled' : ''}" data-act="${act}"
+        ${enabled ? '' : 'disabled'} title="${title || label}">${label}</button>`;
+    return [
+      btn('start', '启动', online ? '' : 'on', !online, online ? '已在运行' : '启动该实例'),
+      btn('stop', '停止', '', online, online ? '停止该实例' : '未运行'),
+      btn('restart', '重启', '', online, online ? '重启该实例' : '未运行'),
+      btn('open', '详情', 'btn-primary', true, '查看详情 / 配置 / 日志'),
+      btn('delete', '删除', 'btn-danger', true, '删除该实例（不可恢复）')
+    ].join('');
+  }
+
+  function createCardHtml(inst) {
+    const online = !!inst.online;
+    return `
+      <div class="inst-card" data-name="${esc(inst.name)}">
+        <div class="card-top">
+          <span class="card-name">${esc(inst.name)}</span>
+          <span class="badge ${online ? 'online' : 'offline'}">${online ? '在线' : '离线'}</span>
+        </div>
+        <div class="card-meta">${esc(inst.username)} @ ${esc(inst.host)}:${esc(inst.port)}</div>
+        <div class="card-cmd">TPA ${inst.tpaRules}条 · 定时指令 ${inst.scheduledCommands}条 · 动作 ${inst.scheduledActions}种${online ? ` · 在线 ${fmtDur(inst.uptime * 1000)}` : ''}</div>
+        <div class="card-actions" data-opbar>${actionButtons(inst)}</div>
+      </div>`;
+  }
+
+  // 事件委托：实例卡片上的操作按钮统一走这里（渲染时无需逐卡逐按钮绑定）
+  async function handleInstanceAction(btn) {
+    const card = btn.closest('.inst-card');
+    const name = card && card.dataset.name;
+    if (!name) return;
+    const act = btn.dataset.act;
+    if (act === 'open') { openDetail(name); return; }
+    if (act === 'delete') { await delInstance(name); return; }
+
+    // 启动/停止/重启：请求期间禁用该卡所有操作按钮，避免连点
+    const bar = card.querySelector('[data-opbar]');
+    if (bar) bar.classList.add('busy');
+    try {
+      btn.textContent = btn.textContent + '…';
+      const d = await api('/api/instances/' + encodeURIComponent(name) + '/' + act, 'POST');
+      if (!d.ok && d.message) console.warn(name, act, d.message);
+    } finally {
+      if (bar) bar.classList.remove('busy');
+      load();
+    }
+  }
+  $('instance-grid').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn || btn.disabled) return;
+    handleInstanceAction(btn);
+  });
 
   async function delInstance(name) {
     if (!confirm(`确定删除实例「${name}」？此操作会停止并移除该实例。`)) return;

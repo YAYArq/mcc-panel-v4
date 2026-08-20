@@ -432,3 +432,9 @@ input[type="radio"]:checked::after {
 .btn-danger {
   background: linear-gradient(135deg, #ff8fae, #f56ba8); border: none; color: #2a0f1c; font-weight: 700;
 }
+
+/* 按钮联动：禁用态 / busy(操作中) */
+.btn.is-disabled { opacity: .35; cursor: not-allowed; border-style: dashed; }
+.btn.is-disabled:hover { box-shadow: none; border-color: var(--border-strong); }
+[data-opbar].busy .btn:not([disabled]) { opacity: .55; pointer-events: none; }
+[data-opbar].busy .btn:not([disabled])::after { content: "…"; }
