@@ -94,7 +94,8 @@ function startPanel(opts = {}) {
       tpaWhiteListOnly: scfg.tpaWhiteListOnly === true,
       tpaWhiteListPlayers: Array.isArray(scfg.tpaWhiteListPlayers) ? scfg.tpaWhiteListPlayers : [],
       scheduledCommands: scfg.scheduledCommands || [], scheduledActions: scfg.scheduledActions || [],
-      botOptions: scfg.botOptions || {}
+      botOptions: scfg.botOptions || {},
+      webInventoryPort: Number(scfg.webInventoryPort) || 0
     };
   }
 
@@ -155,6 +156,19 @@ function startPanel(opts = {}) {
         const body = await readBody(req);
         if (!body.command) return json(res, 400, { ok: false, error: '缺少 command 字段' });
         return json(res, 200, manager.sendCommand(name, body.command));
+      }
+
+      // POST 寻路移动 {x,y,z,range}
+      if (req.method === 'POST' && action === 'go') {
+        const body = await readBody(req);
+        if (![body.x, body.y, body.z].every((n) => Number.isFinite(Number(n)))) {
+          return json(res, 400, { ok: false, error: '需要 x/y/z 坐标' });
+        }
+        return json(res, 200, manager.goTo(name, body.x, body.y, body.z, body.range));
+      }
+      // POST 停止寻路
+      if (req.method === 'POST' && action === 'stop') {
+        return json(res, 200, manager.stopPath(name));
       }
 
       // GET 单实例

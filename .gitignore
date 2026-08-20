@@ -18,3 +18,6 @@ secrets.*
 
 # 本地会话元数据（不进仓库）
 .reasonix/
+
+# 网页背包静态资源缓存（mineflayer-web-inventory）
+.webinventory/

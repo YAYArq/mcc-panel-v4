@@ -1,9 +1,13 @@
 'use strict';
 
+const path = require('path');
 const mineflayer = require('mineflayer');
+const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+const inventoryViewer = require('mineflayer-web-inventory');
 const logger = require('./logger');
 const { resolveRequestRules, matchRequest, classifyResult } = require('./regexes');
 const { Scheduler } = require('./scheduler');
+const { normalizeMinecraftVersion } = require('./util/version');
 
 // 重连参数
 const RECONNECT_DELAY_MS = 5000;
@@ -133,12 +137,17 @@ class AfkBot {
 
   createBot() {
     const cfg = this.cfg;
+    // 版本归一化：26.1.2/26.2 -> 26.1（mineflayer-x 协议 775），其余透传
+    const normVersion = normalizeMinecraftVersion(cfg.version);
+    if (cfg.version && normVersion !== cfg.version) {
+      this.log.info(`版本 ${cfg.version} 归一化为 ${normVersion}（mineflayer-x 协议兼容）`);
+    }
     const mergedOptions = {
       host: cfg.host,
       port: cfg.port || 25565,
       username: cfg.username,
       auth: cfg.auth || 'offline',
-      version: cfg.version || undefined,
+      version: normVersion || undefined,
       // 低占用：抑制 minecraft-protocol 偶发 chunk 解压错误的大量 hex 输出（可被覆盖）
       hideErrors: true,
       ...(this.options.globalBotOptions || {}),
@@ -160,6 +169,14 @@ class AfkBot {
     }
     this.bot = bot;
 
+    // 接入 mineflayer-pathfinder（寻路 / 面板坐标移动）
+    try {
+      bot.loadPlugin(pathfinder);
+      this.log.debug('已加载 mineflayer-pathfinder 插件');
+    } catch (e) {
+      this.log.error('加载 mineflayer-pathfinder 失败:', e && e.message);
+    }
+
     this.attachHandlers(bot);
 
     bot.once('spawn', () => {
@@ -171,6 +188,7 @@ class AfkBot {
       this.health.lastOnlineAt = Date.now();
       const p = bot.entity && bot.entity.position;
       this.log.info(`已上线${p ? `，坐标 (${Math.floor(p.x)}, ${Math.floor(p.y)}, ${Math.floor(p.z)})` : ''}`);
+      this.maybeStartWebInventory();
       this.emit('spawn');
     });
 
@@ -414,6 +432,56 @@ class AfkBot {
     }
   }
 
+  /**
+   * 网页背包：按配置端口启动 mineflayer-web-inventory（每实例只启动一次）。
+   * 配置：webInventoryPort>0 才会启动；webInventoryDir 为静态资源目录。
+   */
+  maybeStartWebInventory() {
+    const port = Number(this.cfg.webInventoryPort) || 0;
+    if (port <= 0) return;
+    if (this._webInvStarted) return;
+    try {
+      const dir = path.resolve(this.cfg.webInventoryDir || path.join(__dirname, '..', '.webinventory'), this.cfg.name);
+      inventoryViewer(this.bot, { port, webPath: dir, startOnLoad: true });
+      this._webInvStarted = true;
+      this.webInventoryPort = port;
+      this.log.info(`网页背包已启动 http://<服务器IP>:${port}`);
+    } catch (e) {
+      this.log.error(`网页背包启动失败: ${e && e.message}`);
+    }
+  }
+
+  /**
+   * 寻路移动到指定坐标（需要 mineflayer-pathfinder）。依赖 bot 在线。
+   * @param {number} x @param {number} y @param {number} z
+   * @param {number} [range] 到达容差（格）
+   */
+  goTo(x, y, z, range = 1) {
+    if (!this.online || !this.bot || !this.bot.pathfinder) {
+      return { ok: false, message: '实例不在线或未加载寻路插件' };
+    }
+    try {
+      const bot = this.bot;
+      const defaultMove = new Movements(bot);
+      bot.pathfinder.setMovements(defaultMove);
+      const goal = new goals.GoalBlock(Math.floor(x), Math.floor(y), Math.floor(z), range);
+      bot.pathfinder.setGoal(goal);
+      this.log.info(`开始寻路移动到 (${x}, ${y}, ${z})`);
+      return { ok: true, message: `已开始移动至 (${x}, ${y}, ${z})` };
+    } catch (e) {
+      return { ok: false, message: `寻路失败: ${e.message}` };
+    }
+  }
+
+  /** 停止当前寻路 */
+  stopPath() {
+    if (this.bot && this.bot.pathfinder) {
+      try { this.bot.pathfinder.setGoal(null); } catch (e) { /* ignore */ }
+      return { ok: true, message: '已停止寻路' };
+    }
+    return { ok: false, message: '实例不在线或未加载寻路插件' };
+  }
+
   getStatus() {
     const now = Date.now();
     const session = this.online && this._onlineSince ? now - this._onlineSince : 0;
@@ -428,6 +496,7 @@ class AfkBot {
       scheduledCommands: (this.cfg.scheduledCommands || []).length,
       scheduledActions: (this.cfg.scheduledActions || []).length,
       uptime: this.online ? Math.round(session / 1000) : 0,
+      webInventoryPort: Number(this.cfg.webInventoryPort) || 0,
       // ---- 健康监控 ----
       health: {
         sessionOnlineMs: this.online ? session : this.health.sessionOnlineMs,

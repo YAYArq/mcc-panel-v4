@@ -169,6 +169,14 @@
     $('st-sched').innerHTML = kv([
       ['TPA 规则数', inst.tpaRules], ['定时指令', inst.scheduledCommands], ['定时动作', inst.scheduledActions]
     ]);
+    // 网页背包入口：仅当在线且配置了端口时显示
+    const wl = $('webinv-link');
+    if (inst.online && inst.webInventoryPort) {
+      wl.href = 'http://' + location.hostname + ':' + inst.webInventoryPort;
+      wl.hidden = false;
+    } else {
+      wl.hidden = true;
+    }
     $('st-result').textContent = '';
   }
   function kv(rows) { return rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>`).join(''); }

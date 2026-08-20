@@ -128,6 +128,19 @@ class BotsManager {
     return bot ? bot.getLogs(limit) : [];
   }
 
+  /** 面板触发某实例寻路移动到坐标 */
+  goTo(name, x, y, z, range) {
+    const bot = this.bots.get(name);
+    if (!bot) return { ok: false, message: `未找到实例: ${name}` };
+    return bot.goTo(Number(x), Number(y), Number(z), Number(range) || 1);
+  }
+  /** 停止某实例寻路 */
+  stopPath(name) {
+    const bot = this.bots.get(name);
+    if (!bot) return { ok: false, message: `未找到实例: ${name}` };
+    return bot.stopPath();
+  }
+
   /** 依据配置重建单个实例（用于保存配置后的热重载 / 创建 / 删除） */
   _spawn(scfg) {
     if (this.bots.has(scfg.name)) {

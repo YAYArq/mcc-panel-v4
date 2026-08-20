@@ -1,0 +1,59 @@
+{
+  "name": "mineflayer-x",
+  "version": "1.0.0",
+  "description": "Minecraft Java 26.x support for mineflayer — protocol, chunks, physics, and game data",
+  "main": "index.js",
+  "type": "commonjs",
+  "files": [
+    "index.js",
+    "lib/",
+    "data/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/data.test.js test/protocol.test.js test/mineflayer.test.js"
+  },
+  "keywords": [
+    "minecraft",
+    "mineflayer",
+    "minecraft-protocol",
+    "minecraft-data",
+    "prismarine",
+    "26.1",
+    "protocol",
+    "java-edition",
+    "bot",
+    "chunk"
+  ],
+  "author": "colours93",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/colours93/mineflayer-x.git"
+  },
+  "bugs": {
+    "url": "https://github.com/colours93/mineflayer-x/issues"
+  },
+  "homepage": "https://github.com/colours93/mineflayer-x#readme",
+  "peerDependencies": {
+    "minecraft-data": ">=3.105.0",
+    "minecraft-protocol": ">=1.64.0",
+    "mineflayer": ">=4.35.0",
+    "prismarine-chunk": ">=1.35.0",
+    "prismarine-physics": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "mineflayer": { "optional": true },
+    "prismarine-chunk": { "optional": true },
+    "prismarine-physics": { "optional": true }
+  },
+  "devDependencies": {
+    "minecraft-data": "^3.105.0",
+    "minecraft-protocol": "^1.64.0",
+    "mineflayer": "^4.35.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

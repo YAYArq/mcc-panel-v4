@@ -21,6 +21,11 @@
  */
 
 const path = require('path');
+
+// ⚠️ mineflayer-x 补丁必须先加载（注册 MC 26.x 协议/数据/版本门控，见 src/vendor/mineflayer-x）
+// 必须早于任何 createBot / mineflayer 使用，否则 26.1 版本连接会失败。
+require('./vendor/mineflayer-x');
+
 const logger = require('./logger');
 const { loadConfig } = require('./config');
 const { BotsManager } = require('./BotsManager');
