@@ -1,0 +1,17 @@
+node_modules/
+*.log
+.DS_Store
+
+# 本地覆盖配置（含密钥，禁止提交）
+config.local.json
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.p8
+id_rsa
+id_ed25519
+credentials*
+secrets.*

@@ -1,0 +1,30 @@
+{
+  "name": "afk-bot",
+  "version": "1.0.0",
+  "description": "基于 mineflayer 的低占用 Minecraft 挂机假人：自动接取 tpa/tpahere、按服务器正则匹配、定时指令、定时动作、MCSManager 面板守护。",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:debug": "node --trace-warnings src/index.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/index.js && node --check src/AfkBot.js && node --check src/scheduler.js && node --check src/regexes.js && node --check src/BotsManager.js && node --check src/mcsm.js && node --check src/mcsmGuard.js && node --check src/config.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "minecraft",
+    "mineflayer",
+    "afk",
+    "bot",
+    "tpa",
+    "tpahere",
+    "mcsm",
+    "mcsmanager"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "mineflayer": "^4.37.1"
+  }
+}

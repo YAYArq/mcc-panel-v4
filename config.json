@@ -1,0 +1,112 @@
+{
+  "//": "挂机假人配置。复制为 config.json 使用。config.local.json 可叠加覆盖（不提交到 git）。",
+  "logLevel": "info",
+
+  "//global": "所有服务器共享的 mineflayer 选项（可被 servers[].botOptions 覆盖）。",
+  "botOptions": {},
+
+  "//scheduler": "统一调度节拍（毫秒），默认 1000。",
+  "schedulerTickMs": 1000,
+
+  "//mcsm": "MCSManager 守护：服务器崩溃/停止时自动拉起，保证挂机不中断。不配 enabled=false。",
+  "mcsm": {
+    "enabled": false,
+    "url": "http://127.0.0.1:23333",
+    "apikey": "在 MCSM 面板生成 API Key 填入",
+    "pollMs": 30000,
+    "cooldownMs": 60000,
+    "server": {
+      "daemonId": "default-node",
+      "uuid": "把服务器实例的 UUID 填入"
+    },
+    "startIfStopped": true,
+    "restartOnCrashed": true
+  },
+
+  "servers": [
+    "//多账号：每【一个账号】就是下面数组里的【一个对象】。同一台服务器想登录多个账号，就写多个同名host、不同username的对象，每个对象是一个独立实例，可单独 start/stop/restart/发命令。name 必须唯一（用来单独控制某个账号）。",
+    {
+      "name": "生存服-阿飞",
+      "host": "play.example.com",
+      "port": 25565,
+      "username": "AfkBot1",
+      "auth": "offline",
+      "version": "1.21.1",
+
+      "//acceptTpa": "是否自动接取 tpa/tpahere（默认 true）",
+      "acceptTpa": true,
+
+      "//tpa": "按服务器自定义的传送请求正则。默认会用内置常见插件规则；想彻底覆盖请设 patternsOverride=true。",
+      "tpa": {
+        "acceptCommand": "/tpaccept",
+        "denyCommand": "/tpdeny",
+        "patternsOverride": false,
+        "patterns": [
+          { "regex": "请求传送(到你的位置|到你的身边)", "type": "tpa" },
+          { "regex": "请求你.{0,6}传送到.{0,6}他的?(身边|位置)", "type": "tpa" },
+          { "regex": "(\\[(点击接受|接受|accept)\\])", "type": "tpa" }
+        ]
+      },
+
+      "//scheduledCommands": "定时指令：every=最小间隔(ms)，cron=5字段标准cron(可选，与every可同时用)。",
+      "scheduledCommands": [
+        { "command": "/afk", "every": 600000 },
+        { "command": "/home spawn", "cron": "0 4 * * *" },
+        { "command": "/tpaccept", "every": 900000 }
+      ],
+
+      "//scheduledActions": "定时动作(防AFK)：swing挥臂 / jump跳 / walk走 / sneak潜行 / turn转身。",
+      "scheduledActions": [
+        { "type": "swing", "every": 120000 },
+        { "type": "walk", "every": 300000, "holdMs": 600 },
+        { "type": "jump", "every": 600000 }
+      ],
+
+      "//botOptions": "单独给该服务器的 mineflayer 选项（可选）",
+      "botOptions": {
+        "hideErrors": true
+      }
+    },
+
+    {
+      "name": "空岛服",
+      "host": "skyblock.example.com",
+      "port": 25565,
+      "username": "AfkBot2",
+      "auth": "offline",
+      "version": "1.20.1",
+      "acceptTpa": true,
+
+      "//空岛服用的是别的TPA插件，自定义正则": true,
+      "tpa": {
+        "patternsOverride": true,
+        "patterns": [
+          { "regex": "玩家 (.+?) 请求传送到你身边", "type": "tpa" },
+          { "regex": "has requested to teleport to you", "type": "tpa" },
+          { "regex": "to accept, type /tpaccept", "type": "tpa" }
+        ]
+      },
+
+      "scheduledCommands": [
+        { "command": "/island", "every": 600000 }
+      ],
+      "scheduledActions": [
+        { "type": "sneak", "every": 240000 }
+      ]
+    },
+
+    "//再来一个同服务器的多账号示例（host 相同、username 不同 => 独立实例，可单独控制）：",
+    {
+      "name": "生存服-小明",
+      "host": "play.example.com",
+      "port": 25565,
+      "username": "AfkBot2",
+      "auth": "offline",
+      "version": "1.21.1",
+      "acceptTpa": true,
+      "scheduledActions": [
+        { "type": "walk", "every": 240000 }
+      ]
+    }
+  ]
+}
