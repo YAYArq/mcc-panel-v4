@@ -96,7 +96,9 @@ mgr.getSnapshots();            // 查看全部实例状态
 ]
 ```
 
-动作类型：`swing`(挥臂)、`jump`(跳)、`walk`(走动，可 `direction:"back"`)、`sneak`(潜行)、`turn`(转身)。
+动作类型：`swing`(挥臂)、`jump`(跳)、`walk`(走动，可 `direction:"back"`)、`sneak`(潜行)、`turn`(转身)、`rightclick`(右键：mode=use 用手中工具 / place 放方块)、`leftclick`(左键：mode=dig 挖方块 / attack 攻击敌对生物)。
+
+**每隔 24 小时使用一次**：填 `"every": 86400000`（24×60×60×1000 毫秒）；想吃固定在每天某一刻执行，改用 `"cron": "0 3 * * *"`（每天 03:00）。
 
 cron 为标准 5 字段：`分 时 日 月 周`（周 0/7 均为周日），五字段 AND 语义。
 

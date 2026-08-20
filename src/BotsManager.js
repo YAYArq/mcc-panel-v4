@@ -122,10 +122,10 @@ class BotsManager {
     }
   }
 
-  /** 拉取某实例最近的日志（供面板） */
-  getLogs(name, limit) {
+  /** 拉取某实例最近的日志（支持 afterSeq 增量；generic 返回 {logs,lastSeq,gap}） */
+  getLogs(name, limit, afterSeq) {
     const bot = this.bots.get(name);
-    return bot ? bot.getLogs(limit) : [];
+    return bot ? bot.getLogs(limit, afterSeq) : { logs: [], lastSeq: -1, gap: false };
   }
 
   /** 面板触发某实例寻路移动到坐标 */

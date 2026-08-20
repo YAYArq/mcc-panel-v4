@@ -170,7 +170,11 @@
   function slotCell(s) {
     if (!s || s.empty === true) return '<div class="inv-cell inv-empty"></div>';
     const hasDrop = s.count > 0;
+    const img = s.icon
+      ? `<img class="inv-icon" src="${esc(s.icon)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+      : '';
     return `<div class="inv-cell" data-slot="${s.slot}">
+      ${img}
       <div class="inv-item">${esc(s.displayName || s.name)}</div>
       ${s.count > 1 ? `<div class="inv-count">x${esc(s.count)}</div>` : ''}
       ${s.enchanted ? '<div class="inv-ench" title="附魔">✦</div>' : ''}
@@ -184,11 +188,14 @@
     // 快捷栏：mineflayer inventory slots[0..8] 为快捷栏；若非背包窗口则按末尾9格
     const hotbar = slots.slice(0, 9);
     const rest = slots.slice(9);
-    $('inv-hotbar').innerHTML = hotbar.map((s, i) =>
-      `<div class="inv-cell inv-hotbar-cell" data-slot="${s ? s.slot : ''}" data-bar="${i}">
+    $('inv-hotbar').innerHTML = hotbar.map((s, i) => {
+      const has = s && s.empty === false;
+      const img = has && s.icon ? `<img class="inv-icon" src="${esc(s.icon)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+      return `<div class="inv-cell inv-hotbar-cell" data-slot="${s ? s.slot : ''}" data-bar="${i}">
         <span class="inv-bar-idx">${i + 1}</span>
-        ${s && s.empty === false ? `<div class="inv-item">${esc(s.displayName || s.name)}${s.count > 1 ? ' x' + s.count : ''}</div>` : '<div class="inv-empty"></div>'}
-      </div>`).join('');
+        ${has ? `${img}<div class="inv-item">${esc(s.displayName || s.name)}${s.count > 1 ? ' x' + s.count : ''}</div>` : '<div class="inv-empty"></div>'}
+      </div>`;
+    }).join('');
     $('inv-main').innerHTML = rest.map(slotCell).join('');
     // 事件：快捷栏点击切主手
     document.querySelectorAll('#inv-hotbar .inv-cell').forEach(c => c.addEventListener('click', () => {
@@ -335,12 +342,8 @@
     scmdRows = (c.scheduledCommands || []).map(x => ({ ...x }));
     sactRows = (c.scheduledActions || []).map(x => ({ ...x }));
     renderRows();
-    toggleAuthNote();
     $('cf-result').textContent = '';
   }
-
-  function toggleAuthNote() { $('auth-note').hidden = $('cf-auth').value !== 'microsoft'; }
-  $('cf-auth').addEventListener('change', toggleAuthNote);
 
   $('tpa-add').addEventListener('click', () => { tpaRows.push({ regex: '', type: 'tpa', accept: true }); renderRows(); });
   $('scmd-add').addEventListener('click', () => { scmdRows.push({ command: '', every: 600000 }); renderRows(); });
@@ -387,19 +390,45 @@
     refreshCmdHistory();
   });
   async function refreshCmdHistory() { $('command-history').innerHTML = '<div class="row muted">已发送（详见日志）</div>'; }
+  // ---------- 日志（增量加载，避免每次全量重渲/不一致） ----------
+  const logStates = {}; // { name: { lastSeq } }
+  function logLineHtml(l) {
+    const lv = (l.level || 'info').toLowerCase();
+    return `<div class="log-line" data-seq="${l.seq}"><span class="time">${fmtTs(l.ts)}</span><span class="bot">${esc(l.bot || '')}</span><span class="lv lv-${lv}">[${lv}]</span>${esc(l.msg)}</div>`;
+  }
+  function renderLogAll(boxEl, logs) {
+    boxEl.innerHTML = (logs.map(logLineHtml).join('')) || '<div class="log-line muted">暂无日志</div>';
+    boxEl.scrollTop = boxEl.scrollHeight;
+  }
+  function appendLogLines(boxEl, logs) {
+    if (!logs.length) return;
+    const wasBottom = boxEl.scrollHeight - boxEl.scrollTop - boxEl.clientHeight < 60;
+    const frag = document.createElement('div');
+    frag.innerHTML = logs.map(logLineHtml).join('');
+    while (frag.firstChild) boxEl.appendChild(frag.firstChild);
+    if (wasBottom) boxEl.scrollTop = boxEl.scrollHeight;
+  }
+  async function pollLog(name, boxEl, autoCheck) {
+    const st = logStates[name];
+    const first = !st || st.lastSeq == null;
+    const url = first
+      ? `/api/instances/${encodeURIComponent(name)}/logs?limit=200`
+      : `/api/instances/${encodeURIComponent(name)}/logs?limit=100&afterSeq=${st.lastSeq}`;
+    const d = await api(url);
+    const logs = (d && d.logs) || [];
+    if (!first && d.gap) {
+      // 缓冲滚动丢段：全量重置
+      renderLogAll(boxEl, logs);
+    } else if (first) {
+      renderLogAll(boxEl, logs);
+    } else {
+      appendLogLines(boxEl, logs);
+    }
+    logStates[name] = { lastSeq: (d && d.lastSeq != null) ? d.lastSeq : -1 };
+  }
   async function loadDetailLog() {
     if (!currentInstance) return;
-    const d = await api('/api/instances/' + encodeURIComponent(currentInstance) + '/logs?limit=200');
-    renderLog($('log-box'), (d && d.logs) || [], $('chk-auto').checked);
-  }
-  function renderLog(boxEl, logs, autoScroll) {
-    const html = logs.map(l => {
-      const lv = (l.level || 'info').toLowerCase();
-      return `<div class="log-line"><span class="time">${fmtTs(l.ts)}</span><span class="bot">${esc(l.bot || '')}</span><span class="lv lv-${lv}">[${lv}]</span>${esc(l.msg)}</div>`;
-    }).join('') || '<div class="log-line muted">暂无日志</div>';
-    const wasBottom = boxEl.scrollHeight - boxEl.scrollTop - boxEl.clientHeight < 40;
-    boxEl.innerHTML = html;
-    if (autoScroll && wasBottom) boxEl.scrollTop = boxEl.scrollHeight;
+    await pollLog(currentInstance, $('log-box'), $('chk-auto'));
   }
 
   // ---------- 健康监控 ----------
@@ -433,15 +462,14 @@
     const cur = sel.value;
     sel.innerHTML = instances.map(i => `<option value="${esc(i.name)}">${esc(i.name)}${i.online ? '' : '（离线）'}</option>`).join('');
     if (instances.some(i => i.name === cur)) sel.value = cur;
-    if (sel.value) loadGlobalLog();
+    if (sel.value) { delete logStates[sel.value]; loadGlobalLog(); }
   }
   async function loadGlobalLog() {
     const name = $('logs-bot').value;
     if (!name) return;
-    const d = await api('/api/instances/' + encodeURIComponent(name) + '/logs?limit=200');
-    renderLog($('logs-box'), (d && d.logs) || [], $('logs-auto').checked);
+    await pollLog(name, $('logs-box'));
   }
-  $('logs-bot').addEventListener('change', loadGlobalLog);
+  $('logs-bot').addEventListener('change', () => { if (logStates) { const n = $('logs-bot').value; if (n && logStates[n]) delete logStates[n]; } loadGlobalLog(); });
 
   // ---------- 配置总览 ----------
   async function loadConfig() {

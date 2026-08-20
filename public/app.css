@@ -455,3 +455,8 @@ input[type="radio"]:checked::after {
 .inv-bar-idx { position: absolute; top: 2px; left: 5px; font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
 .muted.ok { color: var(--green); }
 .muted.err { color: var(--red); }
+
+/* 物品图标（MCID） */
+.inv-cell { padding: 6px 4px; }
+.inv-icon { width: 30px; height: 30px; image-rendering: pixelated; margin-bottom: 3px; }
+.inv-hotbar-cell .inv-icon { width: 28px; height: 28px; }

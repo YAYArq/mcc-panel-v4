@@ -1,10 +1,12 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const vec3 = require('vec3');
-const logger = require('./logger');const { resolveRequestRules, matchRequest, classifyResult } = require('./regexes');
+const logger = require('./logger');
+const { resolveRequestRules, matchRequest, classifyResult } = require('./regexes');
 const { Scheduler } = require('./scheduler');
 const { normalizeMinecraftVersion } = require('./util/version');
 
@@ -32,6 +34,7 @@ class AfkBot {
     this.cfg = scfg;
     this.options = options;
     this.logBuffer = []; // 每实例日志环形缓冲（供面板展示，最多 200 条）
+    this._logSeq = 0;    // 单调递增序号，用于增量拉取与 gap 检测
     this.log = this._makeLogger(scfg.name || scfg.username || 'bot');
 
     this.bot = null;
@@ -55,6 +58,14 @@ class AfkBot {
     this._reconnectDelay = 0;
   }
 
+  /** 统一的日志追加：带自增 seq（供增量拉取/gap 检测），环形上限 200 */
+  _appendLog(entry) {
+    const e = { seq: this._logSeq++, ...entry };
+    this.logBuffer.push(e);
+    if (this.logBuffer.length > 200) this.logBuffer.shift();
+    return e;
+  }
+
   /** 包装全局 logger：同时向本实例 logBuffer 记录，供面板读取 */
   _makeLogger(name) {
     const raw = logger.scope(name);
@@ -62,8 +73,7 @@ class AfkBot {
     const buf = (level, args) => {
       try {
         const msg = args.map((a) => (a instanceof Error ? (a.stack || a.message) : String(a))).join(' ');
-        self.logBuffer.push({ ts: Date.now(), level, bot: name, msg });
-        if (self.logBuffer.length > 200) self.logBuffer.shift();
+        self._appendLog({ ts: Date.now(), level, bot: name, msg });
       } catch (e) { /* ignore */ }
     };
     return {
@@ -75,9 +85,22 @@ class AfkBot {
   }
 
   /** 供面板/API 拉取本实例最近的日志 */
-  getLogs(limit) {
-    const n = Math.max(1, Math.min(limit || 100, 200));
-    return this.logBuffer.slice(-n);
+  /**
+   * 拉取日志。若 afterSeq>=0，只返回 seq>afterSeq 的新日志，并报告是否有 gap（缓冲滚动丢段）。
+   * 返回 { logs, lastSeq, gap }
+   */
+  getLogs(limit, afterSeq) {
+    const n = Math.max(1, Math.min(limit || 200, 200));
+    if (afterSeq == null) {
+      const logs = this.logBuffer.slice(-n);
+      const lastSeq = logs.length ? logs[logs.length - 1].seq : -1;
+      return { logs, lastSeq, gap: false };
+    }
+    const newer = this.logBuffer.filter((e) => e.seq > afterSeq);
+    // 若缓冲最旧一条的 seq 也已经 > afterSeq，说明 afterSeq 段被环形滚动丢弃 → gap
+    const gap = this.logBuffer.length > 0 && this.logBuffer[0].seq > afterSeq;
+    const lastSeq = newer.length ? newer[newer.length - 1].seq : afterSeq;
+    return { logs: newer.slice(-n), lastSeq, gap };
   }
 
   start() {
@@ -117,9 +140,9 @@ class AfkBot {
           const code = (s.match(/the code\s+([A-Z0-9]+)/i) || s.match(/otc=([A-Z0-9]+)/i) || [])[1] || '';
           const base = '【微软登录】';
           if (uri && code) {
-            self.logBuffer.push({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: `${base}请在浏览器打开 ${uri}，输入登录代码: ${code}` });
+            self._appendLog({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: `${base}请在浏览器打开 ${uri}，输入登录代码: ${code}` });
           } else {
-            self.logBuffer.push({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: base + s });
+            self._appendLog({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: base + s });
           }
         } catch (e) { /* ignore */ }
       }
@@ -584,6 +607,18 @@ class AfkBot {
     return { ok: false, message: '实例不在线或未加载寻路插件' };
   }
 
+  /** 返回物品图标相对路径(MCID public/img)，按 name.png → name_i.png → name_i.gif 三级回退；无则 null */
+  _itemIcon(name) {
+    if (!name) return null;
+    const base = name.replace(/^minecraft:/, '');
+    const dir = path.join(__dirname, '..', 'public', 'img');
+    const tryList = [`${base}.png`, `${base}_i.png`, `${base}_i.gif`];
+    for (const f of tryList) {
+      if (fs.existsSync(path.join(dir, f))) return `/img/${f}`;
+    }
+    return null;
+  }
+
   /**
    * 背包查看：读取假人背包(36格+快捷栏)与当前打开的窗口(容器)，供面板展示。
    * 返回 { ok, windowName, slots } slots: [{ slot, name, displayName, count, id, raw }]
@@ -602,7 +637,7 @@ class AfkBot {
           const md = require('minecraft-data')(bot.version || '1.21.11');
           if (md.items && item.type != null && md.items[item.type]) displayName = md.items[item.type].displayName || itemName;
         } catch (e) { /* ignore */ }
-        return { slot: slotNum, empty: false, name: itemName, displayName, count: item.count, id: item.type, enchanted: !!(item.enchants && item.enchants.length) };
+        return { slot: slotNum, empty: false, name: itemName, displayName, icon: this._itemIcon(itemName), count: item.count, id: item.type, enchanted: !!(item.enchants && item.enchants.length) };
       });
       return { ok: true, windowName: window.title ? window.title.toString() : (window === bot.inventory ? '背包' : '窗口'), slots };
     } catch (e) {

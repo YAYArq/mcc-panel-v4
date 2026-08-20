@@ -135,7 +135,6 @@
               <select id="cf-acceptTpa" class="select"><option value="true">开</option><option value="false">关</option></select>
             </label>
           </div>
-          <p class="auth-note" id="auth-note" hidden>微软账号说明：保存/启动后，系统会用设备码登录。请打开 <b>https://www.microsoft.com/link</b>，输入日志里显示的 Code 完成授权（登录一次后 token 会缓存）。</p>
 
           <div class="panel-title" style="margin-top:18px">TPA 接取白名单 · 仅接受白名单内玩家的请求</div>
           <p class="panel-hint">开启后：只自动接受<b>白名单内玩家</b>发来的 tpa/tpahere；白名单外玩家一律忽略（不自动接受也不拒绝）。关闭则按上方规则对所有请求接取。白名单玩家用逗号分隔。</p>
@@ -159,7 +158,7 @@
           </div>
 
           <div class="panel-title" style="margin-top:18px">自动化 · 定时指令</div>
-          <p class="panel-hint">command=要定时执行的指令；every=间隔毫秒(如 600000=10分钟)；cron=可选 5 字段标准 cron（分 时 日 月 周）。</p>
+          <p class="panel-hint">command=要执行的指令；every=间隔毫秒；cron=可选 5 字段标准 cron（分 时 日 月 周）。<br>示例：<b>每隔 24 小时</b>=<b>every 填 86400000</b>（最精确），或每天固定时刻用 cron 如 <b>0 3 * * *</b>（每天 03:00）。</p>
           <div id="scmd-list" class="vis-list"></div>
           <div class="config-toolbar"><button id="scmd-add" class="btn btn-sm">＋ 添加定时指令</button></div>
 

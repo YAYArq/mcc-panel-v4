@@ -36,7 +36,13 @@ function serveStatic(res, file, type) {
     if (!_staticCache.has(file)) {
       _staticCache.set(file, fs.readFileSync(file));
     }
-    const mime = type || (path.extname(file) === '.css' ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8');
+    const ext = path.extname(file).toLowerCase();
+    const mime = type || (ext === '.css' ? 'text/css; charset=utf-8'
+        : ext === '.png' ? 'image/png'
+        : ext === '.gif' ? 'image/gif'
+        : ext === '.svg' ? 'image/svg+xml'
+        : ext === '.ico' ? 'image/x-icon'
+        : 'text/html; charset=utf-8');
     res.writeHead(200, { 'Content-Type': mime });
     res.end(_staticCache.get(file));
   } catch (e) {
@@ -112,6 +118,17 @@ function startPanel(opts = {}) {
     if (req.method === 'GET' && (urlPath === '/app.js' || urlPath === '/app.css')) {
       return serveStatic(res, path.join(publicDir, path.basename(urlPath)));
     }
+    // 物品图标静态资源（MCID public/img），防目录穿越
+    if (req.method === 'GET' && urlPath.startsWith('/img/')) {
+      const rel = urlPath.slice('/img/'.length).replace(/^[\\/]+/, '');
+      if (rel && !rel.includes('..') && !rel.includes('\\') && !rel.includes(':')) {
+        const p = path.join(publicDir, 'img', rel);
+        if (fs.existsSync(p) && p.startsWith(path.join(publicDir, 'img') + path.sep)) {
+          return serveStatic(res, p);
+        }
+      }
+      return json(res, 404, { ok: false, error: 'not found' });
+    }
 
     // 健康检查 / 状态
     if (req.method === 'GET' && (urlPath === '/health' || urlPath === '/healthz')) {
@@ -184,13 +201,16 @@ function startPanel(opts = {}) {
       if (req.method === 'GET' && !action) {
         const snap = manager.getSnapshots().find((s) => s.name === name) || null;
         if (!snap) return json(res, 404, { ok: false, error: '实例不存在' });
-        return json(res, 200, { ok: true, instance: snap, latestLogs: manager.getLogs(name, 60) });
+        return json(res, 200, { ok: true, instance: snap, latestLogs: manager.getLogs(name, 60).logs });
       }
 
-      // GET 日志
+      // GET 日志（支持增量：afterSeq）
       if (req.method === 'GET' && action === 'logs') {
-        const limit = Number(new URL(req.url, 'http://x').searchParams.get('limit')) || 100;
-        return json(res, 200, { ok: true, logs: manager.getLogs(name, limit) });
+        const q = new URL(req.url, 'http://x');
+        const limit = Number(q.searchParams.get('limit')) || 100;
+        const afterSeq = q.searchParams.get('afterSeq');
+        const r = manager.getLogs(name, limit, afterSeq === null ? null : Number(afterSeq));
+        return json(res, 200, { ok: true, ...r });
       }
 
       // GET 单实例可编辑配置
