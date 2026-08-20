@@ -127,6 +127,63 @@ class BotsManager {
     const bot = this.bots.get(name);
     return bot ? bot.getLogs(limit) : [];
   }
+
+  /** 依据配置重建单个实例（用于保存配置后的热重载 / 创建 / 删除） */
+  _spawn(scfg) {
+    if (this.bots.has(scfg.name)) {
+      const old = this.bots.get(scfg.name);
+      try { old.stop(); } catch (e) { /* ignore */ }
+      this.bots.delete(scfg.name);
+    }
+    const bot = new AfkBot(scfg, {
+      schedulerTickMs: this.schedulerTickMs,
+      globalBotOptions: this.globalBotOptions,
+      onEvent: (b, e, d) => this._onEvent(b, e, d)
+    });
+    this.bots.set(scfg.name, bot);
+    return bot;
+  }
+
+  /** 新建实例：spawn 并启动（scfg 为完整配置对象） */
+  addServer(scfg) {
+    if (!scfg || !scfg.name) return { ok: false, message: '缺少实例 name' };
+    if (this.bots.has(scfg.name)) return { ok: false, message: `实例已存在: ${scfg.name}` };
+    const bot = this._spawn(scfg);
+    bot.start();
+    this.log.info(`已添加实例: ${scfg.name}`);
+    return { ok: true, message: `已创建并启动实例: ${scfg.name}` };
+  }
+
+  /** 更新单实例配置并热重载（scfg 为最新完整配置） */
+  updateServer(name, scfg) {
+    if (scfg.name !== name) return { ok: false, message: 'name 不可修改' };
+    const exists = this.bots.has(name);
+    const bot = this._spawn(scfg);
+    this.log.info(`已热重载实例配置: ${name}`);
+    if (scfg.enabled !== false) {
+      bot.start();
+    }
+    return { ok: true, message: `实例[${name}] 配置已应用${exists ? '（已重启生效）' : ''}` };
+  }
+
+  /** 删除实例（停止并移除）；scfg 可带 enabled 判断 */
+  removeServer(name) {
+    const bot = this.bots.get(name);
+    if (bot) { try { bot.stop(); } catch (e) { /* ignore */ } this.bots.delete(name); }
+    this.log.info(`已删除实例: ${name}`);
+    return { ok: true, message: `已删除实例: ${name}` };
+  }
+
+  /** 获取全部实例的完整配置（供配置编辑页面）——不暴露敏感字段 */
+  getConfigs() {
+    return [...this.bots.values()].map((b) => ({
+      name: b.cfg.name, host: b.cfg.host, port: b.cfg.port, username: b.cfg.username,
+      auth: b.cfg.auth, version: b.cfg.version || null, enabled: b.cfg.enabled !== false,
+      acceptTpa: b.cfg.acceptTpa !== false, tpa: b.cfg.tpa || {},
+      scheduledCommands: b.cfg.scheduledCommands || [], scheduledActions: b.cfg.scheduledActions || [],
+      botOptions: b.cfg.botOptions || {}
+    }));
+  }
 }
 
 module.exports = { BotsManager };

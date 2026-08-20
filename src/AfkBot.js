@@ -34,6 +34,16 @@ class AfkBot {
     this.online = false;
     this.reconnectAttempts = 0;
     this._shutdown = false;
+    // 健康监控统计
+    this.health = {
+      lastOnlineAt: null,   // 最近一次上线时间
+      lastOfflineAt: null,  // 最近一次离线时间（含本次会话断开）
+      sessionOnlineMs: 0,   // 本次会话在线时长(ms)
+      totalOnlineMs: 0,     // 累计在线时长(ms)
+      totalDisconnects: 0,  // 累计断线次数
+      lastDisconnectReason: '',
+      startedAt: Date.now() // 实例创建时间
+    };
     this.tpaRules = resolveRequestRules(scfg, logger);
     this.scheduler = new Scheduler({ tickMs: options.schedulerTickMs || 1000 });
   }
@@ -77,6 +87,36 @@ class AfkBot {
     }
   }
 
+  /** 微软账号：捕获设备码登录链接/code 转发到面板日志（auth=microsoft 时调用） */
+  _hookMsa() {
+    if (this.cfg.auth !== 'microsoft') return;
+    const self = this;
+    const origLog = console.log.bind(console);
+    const origWarn = console.warn ? console.warn.bind(console) : origLog;
+    const origErr = console.error.bind(console);
+    const sniff = (s) => {
+      // 微软设备码登录提示：https://www.microsoft.com/link 或 aka.ms/devicelogin + code
+      if (!s) return;
+      if (/microsoft\.com\/link|aka\.ms\/devicelogin|enter the code|要登录|open the page|sign in/.test(s)) {
+        try {
+          self.logBuffer.push({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: '【微软登录】' + s });
+        } catch (e) { /* ignore */ }
+      }
+    };
+    // 只完成一次还原，2.5 分钟内有效（设备码等待期）
+    let restored = false;
+    const restore = () => {
+      if (restored) return; restored = true;
+      console.log = origLog; console.warn = origWarn; console.error = origErr;
+      if (this._msaTimer) clearTimeout(this._msaTimer);
+    };
+    console.log = function (...a) { sniff(a.map((x) => String(x)).join(' ')); return origLog.apply(console, a); };
+    console.warn = function (...a) { sniff(a.map((x) => String(x)).join(' ')); return origWarn.apply(console, a); };
+    console.error = function (...a) { sniff(a.map((x) => String(x)).join(' ')); return origErr.apply(console, a); };
+    if (this._msaTimer) clearTimeout(this._msaTimer);
+    this._msaTimer = setTimeout(restore, 150000);
+  }
+
   createBot() {
     const cfg = this.cfg;
     const mergedOptions = {
@@ -91,7 +131,11 @@ class AfkBot {
       ...(cfg.botOptions || {})
     };
 
-    this.log.info(`正在连接 ${cfg.host}:${cfg.port} (${cfg.username}) version=${cfg.version || 'auto'}`);
+    if (cfg.auth === 'microsoft') this._hookMsa();
+    this.log.info(`正在连接 ${cfg.host}:${cfg.port} (${cfg.username}) 登录方式=${cfg.auth || 'offline'} version=${cfg.version || 'auto'}`);
+    if (cfg.auth === 'microsoft') {
+      this.log.info('微软账号登录：请在面板日志查看设备码链接（https://www.microsoft.com/link），用浏览器打开并输入 Code 完成授权');
+    }
     let bot;
     try {
       bot = mineflayer.createBot(mergedOptions);
@@ -108,6 +152,9 @@ class AfkBot {
       this.online = true;
       this.reconnectAttempts = 0;
       this._onlineSince = Date.now();
+      // 健康：记录本次会话上线时间，累计上次会话时长
+      this.health.sessionOnlineMs = 0;
+      this.health.lastOnlineAt = Date.now();
       const p = bot.entity && bot.entity.position;
       this.log.info(`已上线${p ? `，坐标 (${Math.floor(p.x)}, ${Math.floor(p.y)}, ${Math.floor(p.z)})` : ''}`);
       this.emit('spawn');
@@ -116,6 +163,7 @@ class AfkBot {
     bot.on('kicked', (reason) => {
       let text = reason;
       if (reason && typeof reason === 'object') text = reason.text || reason.reason || JSON.stringify(reason);
+      this.health.lastDisconnectReason = text;
       this.log.warn(`被服务器踢出: ${text}`);
     });
 
@@ -125,6 +173,21 @@ class AfkBot {
 
     bot.on('end', (reason) => {
       this.online = false;
+      // 健康：累计在线时长与断线次数
+      const now = Date.now();
+      if (this._onlineSince) {
+        const dur = now - this._onlineSince;
+        this.health.sessionOnlineMs = dur;
+        this.health.totalOnlineMs += dur;
+        this._onlineSince = null;
+      }
+      this.health.lastOfflineAt = now;
+      if (this._shutdown) {
+        this.health.lastDisconnectReason = 'shutdown';
+      } else {
+        this.health.totalDisconnects += 1;
+        if (!this.health.lastDisconnectReason) this.health.lastDisconnectReason = String(reason || 'unknown');
+      }
       this.emit('end', { reason });
       if (this._shutdown) return;
       this.log.warn(`连接断开 (${reason || 'unknown'})，${RECONNECT_DELAY_MS / 1000}s 后重连`);
@@ -310,6 +373,8 @@ class AfkBot {
   }
 
   getStatus() {
+    const now = Date.now();
+    const session = this.online && this._onlineSince ? now - this._onlineSince : 0;
     return {
       name: this.cfg.name,
       username: this.cfg.username,
@@ -320,7 +385,17 @@ class AfkBot {
       tpaRules: this.tpaRules.length,
       scheduledCommands: (this.cfg.scheduledCommands || []).length,
       scheduledActions: (this.cfg.scheduledActions || []).length,
-      uptime: this.online && this.bot ? Math.round((Date.now() - this._onlineSince) / 1000) : 0
+      uptime: this.online ? Math.round(session / 1000) : 0,
+      // ---- 健康监控 ----
+      health: {
+        sessionOnlineMs: this.online ? session : this.health.sessionOnlineMs,
+        totalOnlineMs: this.health.totalOnlineMs + (this.online ? session : 0),
+        totalDisconnects: this.health.totalDisconnects,
+        lastOnlineAt: this.health.lastOnlineAt,
+        lastOfflineAt: this.health.lastOfflineAt,
+        lastDisconnectReason: this.health.lastDisconnectReason,
+        startedAt: this.health.startedAt
+      }
     };
   }
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>挂机假人 · 控制面板</title>
+  <title>YAYA bot · 控制面板</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -13,17 +13,21 @@
   <div id="app" class="app">
     <aside class="sidebar">
       <div class="sidebar-logo">
-        <span class="brand">挂机假人</span>
+        <span class="brand">YAYA bot</span>
         <span class="sidebar-sub">AFK BOT PANEL</span>
       </div>
       <nav class="main-tabs" id="main-tabs">
         <button class="main-tab active" data-view="instances" title="01 实例"><span class="nav-ico">01</span><span class="nav-label">实例</span></button>
-        <button class="main-tab" data-view="logs" title="02 全局日志"><span class="nav-ico">02</span><span class="nav-label">日志</span></button>
-        <button class="main-tab" data-view="config" title="03 配置"><span class="nav-ico">03</span><span class="nav-label">配置</span></button>
+        <button class="main-tab" data-view="health" title="02 健康监控"><span class="nav-ico">02</span><span class="nav-label">健康监控</span></button>
+        <button class="main-tab" data-view="logs" title="03 日志"><span class="nav-ico">03</span><span class="nav-label">日志</span></button>
+        <button class="main-tab" data-view="config" title="04 配置"><span class="nav-ico">04</span><span class="nav-label">配置</span></button>
       </nav>
       <div class="sidebar-status">
         <span id="conn-status" class="conn-status on">● 在线</span>
-        <span class="perf-status">面板 v1.0 · 端口 10270</span>
+        <span class="perf-status">面板 v2.0 · 端口 10270</span>
+        <div class="sidebar-theme">
+          <button id="btn-theme" class="btn btn-ghost" title="切换白天 / 黑夜模式">🌙 黑夜</button>
+        </div>
       </div>
     </aside>
 
@@ -32,8 +36,8 @@
       <!-- ============ Hero ============ -->
       <section class="sec sec-hero" id="sec-hero">
         <div class="hero">
-          <div class="hero-title">挂机假人</div>
-          <div class="hero-sub">MINECRAFT AFK BOT · 自动接取 TPA/TPAHERE · 多服务器正则 · 定时指令/动作 · MCSM 守护</div>
+          <div class="hero-title">YAYA bot</div>
+          <div class="hero-sub">MINECRAFT AFK BOT ·</div>
           <div class="hero-stats">
             <div class="hero-stat"><span class="hero-stat-num" id="h-instances">0</span><span class="hero-stat-label">实例</span></div>
             <div class="hero-stat"><span class="hero-stat-num" id="h-online">0</span><span class="hero-stat-label">在线</span></div>
@@ -53,13 +57,14 @@
         <div class="toolbar">
           <span id="selected-count" class="selected-count"></span>
           <div class="toolbar-actions">
-            <button id="btn-refresh" class="btn btn-sm" title="刷新实例列表">刷新</button>
-            <button id="btn-start-all" class="btn btn-sm" title="启动全部实例">全部启动</button>
-            <button id="btn-stop-all" class="btn btn-sm" title="停止全部实例">全部停止</button>
+            <button id="btn-refresh" class="btn btn-sm" title="刷新">刷新</button>
+            <button id="btn-start-all" class="btn btn-sm" title="启动全部">全部启动</button>
+            <button id="btn-stop-all" class="btn btn-sm" title="停止全部">全部停止</button>
+            <button id="btn-add-bot" class="btn btn-sm btn-primary" title="新建实例">＋ 新建实例</button>
           </div>
         </div>
         <div id="instance-grid" class="instance-grid"></div>
-        <div id="empty-state" class="empty-state hidden"><div class="empty-icon">00</div><p id="empty-text">暂无实例 · 请在 config.json 的 servers 中配置账号</p></div>
+        <div id="empty-state" class="empty-state hidden"><div class="empty-icon">00</div><p id="empty-text">暂无实例 · 点击「＋ 新建实例」或在 config.json 配置</p></div>
       </section>
 
       <!-- ============ 02 实例详情 ============ -->
@@ -71,6 +76,7 @@
         </header>
         <div class="tab-bar" id="detail-tabs">
           <button class="tab active" data-tab="status">状态</button>
+          <button class="tab" data-tab="config">配置</button>
           <button class="tab" data-tab="command">指令</button>
           <button class="tab" data-tab="log">日志</button>
         </div>
@@ -87,15 +93,62 @@
             </div>
           </div>
           <div class="config-toolbar">
-            <button id="btn-inst-start" class="btn btn-sm" title="启动该实例">启动</button>
-            <button id="btn-inst-stop" class="btn btn-sm" title="停止该实例">停止</button>
-            <button id="btn-inst-restart" class="btn btn-sm" title="重启该实例">重启</button>
+            <button id="btn-inst-start" class="btn btn-sm">启动</button>
+            <button id="btn-inst-stop" class="btn btn-sm">停止</button>
+            <button id="btn-inst-restart" class="btn btn-sm">重启</button>
+            <button id="btn-inst-delete" class="btn btn-sm btn-danger">删除实例</button>
             <span id="st-result" class="command-result"></span>
           </div>
         </section>
 
+        <!-- 配置编辑：连接 + 登录方式(offline/microsoft) + TPA正则 + 定时任务 -->
+        <section id="tab-config" class="tab-panel hidden">
+          <p class="panel-hint">每个实例单独配置。登录方式：offline=离线；microsoft=微软账号（登录时去 https://www.microsoft.com/link 输入设备码，见日志）。</p>
+          <div class="config-form">
+            <label class="form-label">实例名 · name <input id="cf-name" class="input mono-input" disabled></label>
+            <label class="form-label">服务器地址 · host <input id="cf-host" class="input mono-input"></label>
+            <label class="form-label">端口 · port <input id="cf-port" type="number" class="input"></label>
+            <label class="form-label">游戏名 · username <input id="cf-username" class="input mono-input"></label>
+            <label class="form-label">登录方式 · auth
+              <select id="cf-auth" class="select">
+                <option value="offline">offline（离线账号）</option>
+                <option value="microsoft">microsoft（微软账号 · www.microsoft.com/link）</option>
+              </select>
+            </label>
+            <label class="form-label">协议版本 · version <input id="cf-version" class="input mono-input" placeholder="自动"></label>
+            <label class="form-label">自动接取 TPA · acceptTpa
+              <select id="cf-acceptTpa" class="select"><option value="true">开</option><option value="false">关</option></select>
+            </label>
+          </div>
+          <p class="auth-note" id="auth-note" hidden>微软账号说明：保存/启动后，系统会用设备码登录。请打开 <b>https://www.microsoft.com/link</b>，输入日志里显示的 Code 完成授权（登录一次后 token 会缓存）。</p>
+
+          <div class="panel-title" style="margin-top:18px">TPA 请求正则 · TPA 规则（按你服务器插件提示文本匹配后自动接受/拒绝）</div>
+          <p class="panel-hint">每条规则：regex 匹配聊天消息；type = tpa(请求传过去) / tpahere(请求传过来) / ignore(忽略)；accept=false 时命中自动发拒绝命令。</p>
+          <div id="tpa-list" class="vis-list"></div>
+          <div class="config-toolbar">
+            <button id="tpa-add" class="btn btn-sm">＋ 添加正则</button>
+            <button id="tpa-reset" class="btn btn-sm" title="恢复内置默认规则">恢复默认</button>
+          </div>
+
+          <div class="panel-title" style="margin-top:18px">自动化 · 定时指令</div>
+          <p class="panel-hint">command=要定时执行的指令；every=间隔毫秒(如 600000=10分钟)；cron=可选 5 字段标准 cron（分 时 日 月 周）。</p>
+          <div id="scmd-list" class="vis-list"></div>
+          <div class="config-toolbar"><button id="scmd-add" class="btn btn-sm">＋ 添加定时指令</button></div>
+
+          <div class="panel-title" style="margin-top:18px">自动化 · 定时动作（防 AFK）</div>
+          <p class="panel-hint">type=swing(挥臂)/jump(跳)/walk(走)/sneak(潜行)/turn(转身)；every=间隔毫秒。</p>
+          <div id="sact-list" class="vis-list"></div>
+          <div class="config-toolbar"><button id="sact-add" class="btn btn-sm">＋ 添加定时动作</button></div>
+
+          <div class="config-toolbar" style="margin-top:8px">
+            <button id="cf-save" class="btn btn-primary">保存配置（热重载）</button>
+            <button id="cf-discard" class="btn btn-sm">放弃修改</button>
+            <span id="cf-result" class="command-result"></span>
+          </div>
+        </section>
+
         <section id="tab-command" class="tab-panel hidden">
-          <p class="panel-hint">向该实例的控制台发送聊天/指令（实现聊天中的自动 TPA 与定时指令依赖此）</p>
+          <p class="panel-hint">向该实例的控制台发送聊天/指令</p>
           <form id="command-form" class="command-form">
             <input id="command-input" class="input mono-input" placeholder="如 /home 或 /say hello" autocomplete="off">
             <button type="submit" class="btn btn-primary">发送</button>
@@ -110,16 +163,29 @@
         <section id="tab-log" class="tab-panel hidden">
           <div class="config-toolbar">
             <label class="check-all"><input type="checkbox" id="chk-auto" checked><span>自动滚动</span></label>
-            <span class="panel-hint">该实例最近 200 条日志</span>
+            <span class="panel-hint">该实例最近 200 条日志（含微软登录设备码提示）</span>
           </div>
           <div id="log-box" class="log-box"></div>
         </section>
       </section>
 
-      <!-- ============ 02 全局日志 ============ -->
-      <section class="sec hidden" id="sec-logs">
+      <!-- ============ 02 健康监控 ============ -->
+      <section class="sec hidden" id="sec-health">
         <header class="sec-head">
           <span class="sec-no">02</span>
+          <h2 class="sec-title">健康监控</h2>
+          <span class="list-summary">各实例在线时长 / 断线记录（每 5 秒刷新）</span>
+        </header>
+        <div class="config-toolbar">
+          <button id="health-refresh" class="btn btn-sm">刷新</button>
+        </div>
+        <div id="health-box" class="table-wrap"></div>
+      </section>
+
+      <!-- ============ 03 全局日志 ============ -->
+      <section class="sec hidden" id="sec-logs">
+        <header class="sec-head">
+          <span class="sec-no">03</span>
           <h2 class="sec-title">日志</h2>
           <span class="list-summary">各实例最近的运行日志</span>
         </header>
@@ -129,24 +195,50 @@
           </label>
           <label class="form-label" style="flex-direction:row;align-items:center;gap:8px;display:flex;margin:0"><input type="checkbox" id="logs-auto" checked>自动刷新</label>
         </div>
-        <div id="logs-box" class="log-box" style="height:600px"></div>
+        <div id="logs-box" class="log-box" style="height:560px"></div>
       </section>
 
-      <!-- ============ 03 配置 ============ -->
+      <!-- ============ 04 配置 ============ -->
       <section class="sec hidden" id="sec-config">
         <header class="sec-head">
-          <span class="sec-no">03</span>
+          <span class="sec-no">04</span>
           <h2 class="sec-title">配置</h2>
           <span class="list-summary">config.json（服务器上编辑生效，重启服务后加载）</span>
         </header>
         <div class="config-toolbar">
           <button id="config-refresh" class="btn btn-sm">刷新</button>
-          <span class="panel-hint">编辑服务器上 /opt/afk-bot/config.json 后用 systemctl restart afk-bot 生效</span>
+          <span class="panel-hint">在实例详情「配置」页可逐实例编辑；这里仅总览</span>
         </div>
         <div id="config-box" class="table-wrap"></div>
       </section>
 
     </main>
+  </div>
+
+  <!-- 新建实例 modal -->
+  <div id="modal-add" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-head">＋ 新建实例</div>
+      <div class="config-form" style="display:block;border:none;padding:0;background:none">
+        <label class="form-label">实例名 · name<input id="na-name" class="input mono-input" placeholder="如：生存服-阿飞"></label>
+        <label class="form-label">服务器地址 · host<input id="na-host" class="input mono-input" placeholder="play.example.com"></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <label class="form-label">端口 · port<input id="na-port" type="number" class="input" value="25565"></label>
+          <label class="form-label">游戏名 · username<input id="na-username" class="input mono-input" placeholder="AfkBot1"></label>
+        </div>
+        <label class="form-label">登录方式 · auth
+          <select id="na-auth" class="select">
+            <option value="offline">offline（离线账号）</option>
+            <option value="microsoft">microsoft（微软账号 · www.microsoft.com/link）</option>
+          </select>
+        </label>
+        <label class="form-label">协议版本 · version<input id="na-version" class="input mono-input" placeholder="自动"></label>
+      </div>
+      <div class="modal-actions">
+        <button id="na-cancel" class="btn btn-sm">取消</button>
+        <button id="na-save" class="btn btn-sm btn-primary">创建并连接</button>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>

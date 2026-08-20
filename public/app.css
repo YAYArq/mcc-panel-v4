@@ -3,7 +3,7 @@
    粉紫深色主题 · Noto Sans SC + JetBrains Mono
    ============================================================ */
 
-:root {
+:root, html[data-theme="dark"] {
   --bg: #17101a;
   --bg-soft: #1e1422;
   --bg-elev: #241826;
@@ -30,6 +30,36 @@
   --glow: 0 0 0 2px rgba(255, 143, 192, 0.3);
   --mono: "JetBrains Mono", "Cascadia Code", Consolas, "Courier New", monospace;
   --sans: "Noto Sans SC", "DengXian", "微软雅黑", "Microsoft YaHei", "PingFang SC", sans-serif;
+  color-scheme: dark;
+}
+
+/* 白天模式（仍保持粉色主基调） */
+html[data-theme="light"] {
+  --bg: #fff3f7;
+  --bg-soft: #ffeaf2;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #ffe0ec;
+  --border: #f3c7d8;
+  --border-strong: #e79fbd;
+  --text: #4a2b3a;
+  --text-dim: #9c6f85;
+  --accent: #f45b9a;
+  --accent-2: #d63f82;
+  --accent-deep: #e64586;
+  --gradient: linear-gradient(135deg, #ff86b8, #f45b9a);
+  --yellow: #d9a03c;
+  --violet: #a55bd8;
+  --green: #2e9e6b;
+  --orange: #d9772f;
+  --red: #e0456b;
+  --gray: #9c6585;
+  --radius: 14px;
+  --radius-lg: 16px;
+  --radius-sm: 10px;
+  --shadow-card: 0 4px 16px rgba(222, 80, 130, 0.12);
+  --shadow-float: 0 14px 34px rgba(244, 91, 154, 0.25), 0 4px 12px rgba(0, 0, 0, 0.1);
+  --glow: 0 0 0 2px rgba(244, 91, 154, 0.3);
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -291,4 +321,114 @@ table.v3-table {
   .sidebar-sub, .nav-label { display: none; }
   .panel-grid { grid-template-columns: 1fr; }
   .main { padding: 0 14px 30px; }
+}
+
+/* ============================================================
+   组件补充：弹层(match v3) / 配置编辑列表 / 粉色表单控件 / 主题过渡
+   ============================================================ */
+html { transition: background .2s ease; color-scheme: dark; }
+html[data-theme="light"] { color-scheme: light; }
+
+/* ---------- 弹层 overlay / modal ---------- */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(10, 6, 12, .7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; padding: 20px;
+}
+html[data-theme="light"] .overlay { background: rgba(120, 60, 90, .35); }
+.modal {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  width: 520px;
+  max-width: 94vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-float);
+}
+.modal-head { font-weight: 700; font-size: 16px; margin-bottom: 14px; }
+.modal .config-form label { margin-bottom: 12px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.hidden { display: none !important; }
+
+/* ---------- 配置编辑列表（tpa / 定时指令 / 定时动作） ---------- */
+.vis-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.vis-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.vis-idx { color: var(--text-dim); font-family: var(--mono); font-size: 12px; width: 16px; }
+.vis-input { flex: 1; min-width: 120px; margin-top: 0; }
+.vis-select { width: 120px; margin-top: 0; }
+.vis-num { width: 110px; margin-top: 0; }
+.vis-row .btn { padding: 4px 9px; font-size: 12px; }
+
+/* ---------- auth 说明 ---------- */
+.auth-note {
+  margin-top: 12px; padding: 10px 14px;
+  background: rgba(216, 165, 255, .1);
+  border: 1px solid rgba(216, 165, 255, .35);
+  border-radius: var(--radius-sm);
+  color: var(--text); font-size: 13px;
+}
+
+/* ---------- 粉色表单控件（去掉默认 UI，自定义 checkbox / select / radio） ---------- */
+input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 16px; height: 16px; border-radius: 4px;
+  border: 2px solid var(--accent);
+  background: var(--bg-soft);
+  cursor: pointer; position: relative; vertical-align: middle;
+  transition: all .15s;
+}
+input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 4px; top: 1px;
+  width: 4px; height: 8px;
+  border: solid #2a0f1c; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+input[type="radio"] {
+  appearance: none; -webkit-appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--bg-soft);
+  cursor: pointer; position: relative; vertical-align: middle;
+}
+input[type="radio"]:checked { border-color: var(--accent); }
+input[type="radio"]:checked::after {
+  content: ""; position: absolute; left: 3px; top: 3px;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+}
+.select, input[type="number"] {
+  display: block; margin-top: 5px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  padding: 8px 10px; outline: none;
+}
+.select:focus { border-color: var(--accent); box-shadow: var(--glow); }
+
+/* ---------- 健康监控表格 ---------- */
+.health-ok { color: var(--green); }
+.health-bad { color: var(--red); }
+.chip {
+  padding: 2px 9px; border-radius: 999px;
+  background: rgba(216, 165, 255, .12);
+  border: 1px solid rgba(216, 165, 255, .35);
+  font-size: 12px;
+}
+.chip.online { color: var(--green); border-color: var(--green); background: rgba(165,232,189,.12); }
+.chip.offline { color: var(--red); border-color: var(--red); background: rgba(255,143,174,.12); }
+
+/* 删除按钮危险态 */
+.btn-danger {
+  background: linear-gradient(135deg, #ff8fae, #f56ba8); border: none; color: #2a0f1c; font-weight: 700;
 }

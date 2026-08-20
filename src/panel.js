@@ -25,6 +25,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
+const { ConfigStore } = require('./configStore');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
@@ -82,6 +83,18 @@ function startPanel(opts = {}) {
   const host = process.env.PANEL_HOST || '0.0.0.0';
   const token = opts.token || process.env.PANEL_TOKEN || '';
   const publicDir = opts.publicDir || PUBLIC_DIR;
+  const store = new ConfigStore({ configPath: opts.configPath || path.join(__dirname, '..', 'config.json') });
+
+  /** 返回完整可编辑配置（去敏感） */
+  function editableConfig(scfg) {
+    return {
+      name: scfg.name, host: scfg.host, port: scfg.port, username: scfg.username,
+      auth: scfg.auth, version: scfg.version || null, enabled: scfg.enabled !== false,
+      acceptTpa: scfg.acceptTpa !== false, tpa: scfg.tpa || {},
+      scheduledCommands: scfg.scheduledCommands || [], scheduledActions: scfg.scheduledActions || [],
+      botOptions: scfg.botOptions || {}
+    };
+  }
 
   const server = http.createServer(async (req, res) => {
     const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
@@ -154,6 +167,40 @@ function startPanel(opts = {}) {
         const limit = Number(new URL(req.url, 'http://x').searchParams.get('limit')) || 100;
         return json(res, 200, { ok: true, logs: manager.getLogs(name, limit) });
       }
+
+      // GET 单实例可编辑配置
+      if (req.method === 'GET' && action === 'config') {
+        const sc = store.getServer(name);
+        if (!sc) return json(res, 404, { ok: false, error: '实例不存在' });
+        return json(res, 200, { ok: true, config: editableConfig(sc) });
+      }
+
+      // PUT 保存配置并热重载 (body: 可编辑字段)
+      if (req.method === 'PUT' && action === 'config') {
+        const body = await readBody(req);
+        const saved = store.updateServer(name, body);
+        if (!saved.ok) return json(res, 400, saved);
+        const latest = store.getServer(name);
+        const reload = manager.updateServer(name, latest);
+        return json(res, reload.ok ? 200 : 400, { ok: true, message: saved.message + (reload.ok ? '，已热重载' : '，但重载失败：' + reload.message) });
+      }
+
+      // DELETE 删除实例
+      if (req.method === 'DELETE') {
+        const removed = store.removeServer(name);
+        if (!removed.ok) return json(res, 400, removed);
+        manager.removeServer(name);
+        return json(res, 200, removed);
+      }
+    }
+
+    // POST 创建实例 (body: { host, port, username, auth, version, name, ... })
+    if (req.method === 'POST' && urlPath === '/api/instances') {
+      const body = await readBody(req);
+      const created = store.createServer(body);
+      if (!created.ok) return json(res, 400, created);
+      const added = manager.addServer(created.server);
+      return json(res, added.ok ? 200 : 400, { ok: true, message: created.message + (added.ok ? '，已启动' : '，但启动失败：' + added.message) });
     }
 
     json(res, 404, { ok: false, error: 'not found' });
