@@ -4,6 +4,7 @@ const path = require('path');
 const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const inventoryViewer = require('mineflayer-web-inventory');
+const vec3 = require('vec3');
 const logger = require('./logger');
 const { resolveRequestRules, matchRequest, classifyResult } = require('./regexes');
 const { Scheduler } = require('./scheduler');
@@ -363,7 +364,7 @@ class AfkBot {
     // 定时动作
     for (const sa of (cfg.scheduledActions || [])) {
       const type = sa.type;
-      if (typeof type !== 'string' || !['swing', 'jump', 'walk', 'sneak', 'turn'].includes(type)) continue;
+      if (typeof type !== 'string' || !['swing', 'jump', 'walk', 'sneak', 'turn', 'rightclick', 'leftclick'].includes(type)) continue;
       try {
         this.scheduler.add({
           name: `action:${type}`,
@@ -425,10 +426,121 @@ class AfkBot {
           bot.look(bot.entity.yaw + Math.PI, 0, true);
           this.log.debug('执行动作: turn(转身)');
         }
+      } else if (type === 'rightclick') {
+        // 右键：mode=use 使用手中物品/工具(锄头/SK铲子等)；mode=place 放置方块
+        const mode = (sa && sa.mode) || 'use';
+        if (mode === 'place') {
+          this._actionRightPlace(bot);
+        } else {
+          bot.activateItem();   // 使用手中物品(锄头耕地/工具触发等)
+          bot.swingArm();
+          this.log.debug('执行动作: rightclick(使用手中物品/工具)');
+        }
+      } else if (type === 'leftclick') {
+        // 左键：mode=dig 挖掘面前方块；mode=attack 攻击最近敌对生物
+        const mode = (sa && sa.mode) || 'dig';
+        if (mode === 'attack') {
+          this._actionLeftAttack(bot);
+        } else {
+          this._actionLeftDig(bot);
+        }
       }
       this.emit('action', { type });
     } catch (e) {
       this.log.error(`执行动作 ${type} 出错: ${e.message}`);
+    }
+  }
+
+  /** 返回实体面朝方向的前方向量（缩放 dist 格） */
+  _facingVec(bot, dist = 2) {
+    const e = bot.entity;
+    if (!e) return null;
+    const yaw = e.yaw, pitch = e.pitch || 0;
+    const dir = vec3(
+      -Math.sin(yaw) * Math.cos(pitch),
+      -Math.sin(pitch),
+      -Math.cos(yaw) * Math.cos(pitch)
+    );
+    return dir.scaled(dist);
+  }
+
+  /** 返回面朝方向的单位主 face 向量（用于 placeBlock 参考面 / 定位前方参考块） */
+  _facingFace(bot) {
+    const e = bot.entity;
+    if (!e) return vec3(0, 0, 1);
+    const yaw = e.yaw, pitch = e.pitch || 0;
+    const h = -Math.sin(yaw);           // x 分量
+    const v = -Math.sin(pitch);         // y 分量
+    const f = -Math.cos(yaw);           // z 分量
+    // 选择主导方向做单位 face（优先水平；俯仰明显则垂直）
+    if (Math.abs(v) > 0.5) return new vec3(0, v > 0 ? 1 : -1, 0);
+    if (Math.abs(h) >= Math.abs(f)) return new vec3(h > 0 ? 1 : -1, 0, 0);
+    return new vec3(0, 0, f > 0 ? 1 : -1);
+  }
+
+  /** 右键放置方块：对准星前方参考块，用手中方块放置（placeBlock）。无准星块则回退到前方 2 格块。 */
+  _actionRightPlace(bot) {
+    try {
+      let ref = bot.blockAtCursor(4.5);
+      if (!ref || !ref.boundingBox) {
+        const fv = this._facingVec(bot, 2);
+        const cand = bot.entity.position.plus(fv).floored();
+        ref = bot.blockAt(cand);
+      }
+      if (!ref || !ref.boundingBox || ref.name === 'air') {
+        this.log.warn('右键放置：前方无可作参考的方块');
+        return;
+      }
+      const face = this._facingFace(bot);
+      const shoulder = bot.entity.position.plus(vec3(0, bot.entity.height * 0.6, 0));
+      bot.lookAt(shoulder, true, () => {
+        bot.placeBlock(ref, face, (err) => {
+          if (err) this.log.debug(`右键放置结果: ${err.message || '失败(无方块/位置已占)'}`);
+          else this.log.info('右键放置方块成功');
+        });
+      });
+    } catch (e) {
+      this.log.error(`右键放置出错: ${e.message}`);
+    }
+  }
+
+  /** 左键挖掘：挖掘准星指向前方最近的可挖方块 */
+  _actionLeftDig(bot) {
+    try {
+      const target = bot.blockAtCursor(4.5);
+      if (!target || target.name === 'air' || !target.boundingBox || target.boundingBox === 'empty') {
+        this.log.debug('左键挖掘：准星前方没有可挖掘方块');
+        return;
+      }
+      bot.dig(target, true, (err) => {
+        if (err) this.log.debug(`挖掘结果: ${err.message || '失败'}`);
+        else this.log.info('左键挖掘完成');
+      });
+    } catch (e) {
+      this.log.error(`左键挖掘出错: ${e.message}`);
+    }
+  }
+
+  /** 左键攻击：扫描实体，攻击最近的敌对生物(僵尸/骷髅等)。避开玩家与假人自身。 */
+  _actionLeftAttack(bot) {
+    try {
+      const maxRange = 8;
+      const hostiles = Object.values(bot.entities).filter((e) =>
+        e && e.position && e.id !== bot.entity.id &&
+        e.type !== 'player' &&
+        (e.kind === 'Hostile mobs' || (e.mobType && !/villager|player/i.test(e.mobType)))
+      );
+      if (!hostiles.length) { this.log.debug('左键攻击：附近没有可攻击的敌对生物'); return; }
+      let nearest = null, nd = Infinity;
+      for (const e of hostiles) {
+        const d = e.position.distanceTo(bot.entity.position);
+        if (d < nd && d <= maxRange) { nd = d; nearest = e; }
+      }
+      if (!nearest) { this.log.debug(`左键攻击：敌对生物都在 ${maxRange} 格之外`); return; }
+      bot.attack(nearest, true);
+      this.log.info(`左键攻击 ${nearest.name || nearest.mobType || nearest.type}（距离 ${nd.toFixed(1)} 格）`);
+    } catch (e) {
+      this.log.error(`左键攻击出错: ${e.message}`);
     }
   }
 

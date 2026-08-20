@@ -221,8 +221,12 @@
     }
     if (type === 'sact') {
       const r = sactRows[idx];
+      const modeHtml = (t) => t === 'rightclick'
+        ? `<option value="use" ${r.mode === 'use' || !r.mode ? 'selected' : ''}>用途具/点击</option><option value="place" ${r.mode === 'place' ? 'selected' : ''}>放置方块</option>`
+        : `<option value="dig" ${r.mode === 'dig' || !r.mode ? 'selected' : ''}>挖掘</option><option value="attack" ${r.mode === 'attack' ? 'selected' : ''}>攻击</option>`;
       return `<span class="vis-idx">#${idx + 1}</span>
-        <select class="select vis-select" data-k="type"><option value="swing" ${r.type === 'swing' ? 'selected' : ''}>swing挥臂</option><option value="jump" ${r.type === 'jump' ? 'selected' : ''}>jump跳</option><option value="walk" ${r.type === 'walk' ? 'selected' : ''}>walk走</option><option value="sneak" ${r.type === 'sneak' ? 'selected' : ''}>sneak潜行</option><option value="turn" ${r.type === 'turn' ? 'selected' : ''}>turn转身</option></select>
+        <select class="select vis-select" data-k="type"><option value="swing" ${r.type === 'swing' ? 'selected' : ''}>swing挥臂</option><option value="jump" ${r.type === 'jump' ? 'selected' : ''}>jump跳</option><option value="walk" ${r.type === 'walk' ? 'selected' : ''}>walk走</option><option value="sneak" ${r.type === 'sneak' ? 'selected' : ''}>sneak潜行</option><option value="turn" ${r.type === 'turn' ? 'selected' : ''}>turn转身</option><option value="rightclick" ${r.type === 'rightclick' ? 'selected' : ''}>rightclick右键</option><option value="leftclick" ${r.type === 'leftclick' ? 'selected' : ''}>leftclick左键</option></select>
+        ${(r.type === 'rightclick' || r.type === 'leftclick') ? `<select class="select vis-select" data-k="mode">${modeHtml(r.type)}</select>` : ''}
         <input class="input mono-input vis-num" data-k="every" value="${esc(r.every || '')}" placeholder="间隔ms">
         <input class="input mono-input vis-num" data-k="holdMs" value="${esc(r.holdMs || '')}" placeholder="holdMs(可选)">
         <button class="btn sact-del">✕</button>`;
@@ -246,6 +250,8 @@
       el.querySelector('.scmd-del').addEventListener('click', () => { scmdRows.splice(i, 1); renderRows(); });
     });
     document.querySelectorAll('#sact-list .vis-row').forEach((el, i) => {
+      const typeSel = el.querySelector('select[data-k="type"]');
+      if (typeSel) typeSel.addEventListener('change', () => { sactRows[i].type = typeSel.value; renderRows(); });
       el.querySelectorAll('[data-k]').forEach(inp => inp.addEventListener('input', () => { sactRows[i][inp.dataset.k] = rawVal(inp); }));
       el.querySelector('.sact-del').addEventListener('click', () => { sactRows.splice(i, 1); renderRows(); });
     });
@@ -269,6 +275,7 @@
     $('cf-auth').value = c.auth || 'offline';
     $('cf-version').value = c.version || '';
     $('cf-acceptTpa').value = String(c.acceptTpa !== false);
+    $('cf-webinv').value = c.webInventoryPort || 0;
     $('cf-host').removeAttribute('disabled');
     $('cf-wl-only').value = String(c.tpaWhiteListOnly === true);
     $('cf-wl-players').value = Array.isArray(c.tpaWhiteListPlayers) ? c.tpaWhiteListPlayers.join(', ') : '';
@@ -302,6 +309,7 @@
       acceptTpa: $('cf-acceptTpa').value === 'true',
       tpaWhiteListOnly: $('cf-wl-only').value === 'true',
       tpaWhiteListPlayers: wlPlayers,
+      webInventoryPort: Number($('cf-webinv').value) || 0,
       tpa: { ...(configCache.tpa || {}), patterns: tpaRows.filter(r => r.regex) },
       scheduledCommands: scmdRows.filter(r => r.command),
       scheduledActions: sactRows.filter(r => r.type && r.every)
