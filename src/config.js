@@ -69,6 +69,9 @@ function normalizeServer(s, idx) {
     denyTpa: s.denyTpa === true,
     // 按服务器覆盖的聊天正则（详见 regexes.js 的内置规则）
     tpa: s.tpa || {},
+    // TPA 白名单：true 时仅接受白名单内玩家的请求；白名单为空则一律不理会
+    tpaWhiteListOnly: s.tpaWhiteListOnly === true,
+    tpaWhiteListPlayers: Array.isArray(s.tpaWhiteListPlayers) ? s.tpaWhiteListPlayers : [],
     // 定时指令
     scheduledCommands: s.scheduledCommands || [],
     // 定时动作

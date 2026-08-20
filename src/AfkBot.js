@@ -88,31 +88,45 @@ class AfkBot {
   }
 
   /** 微软账号：捕获设备码登录链接/code 转发到面板日志（auth=microsoft 时调用） */
+  /**
+   * 微软账号：捕获 prismarine-auth 设备码登录输出（链接 + code）转发到面板日志。
+   * 注意：prismarine-auth 用 console.info 打印「Please authenticate now」和 message，
+   * 因此需要拦截 console.info（以及 log/warn/error），否则登录 code 不会出现在面板日志。
+   */
   _hookMsa() {
     if (this.cfg.auth !== 'microsoft') return;
     const self = this;
-    const origLog = console.log.bind(console);
-    const origWarn = console.warn ? console.warn.bind(console) : origLog;
-    const origErr = console.error.bind(console);
+    const methods = ['log', 'info', 'warn', 'error'];
+    const orig = {};
+    for (const m of methods) orig[m] = console[m] ? console[m].bind(console) : (() => {});
     const sniff = (s) => {
-      // 微软设备码登录提示：https://www.microsoft.com/link 或 aka.ms/devicelogin + code
       if (!s) return;
-      if (/microsoft\.com\/link|aka\.ms\/devicelogin|enter the code|要登录|open the page|sign in/.test(s)) {
+      // prismarine-auth 设备码 message 形如：
+      //   To sign in, use a web browser to open the page <uri> and use the code <CODE> or visit http://microsoft.com/link?otc=<CODE>
+      if (/microsoft\.com\/link|aka\.ms\/devicelogin|enter the code|要登录|open the page|sign in|Please authenticate|user_code|otc=/.test(s)) {
         try {
-          self.logBuffer.push({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: '【微软登录】' + s });
+          // 提取链接与 code，整理成清晰提示
+          const uri = (s.match(/open the page\s+(\S+)/i) || s.match(/https?:\/\/\S+\/link[^ ]*/i) || [])[1] || (s.match(/aka\.ms\/devicelogin[^ ]*/i) || [])[0] || '';
+          const code = (s.match(/the code\s+([A-Z0-9]+)/i) || s.match(/otc=([A-Z0-9]+)/i) || [])[1] || '';
+          const base = '【微软登录】';
+          if (uri && code) {
+            self.logBuffer.push({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: `${base}请在浏览器打开 ${uri}，输入登录代码: ${code}` });
+          } else {
+            self.logBuffer.push({ ts: Date.now(), level: 'info', bot: self.cfg.name, msg: base + s });
+          }
         } catch (e) { /* ignore */ }
       }
     };
-    // 只完成一次还原，2.5 分钟内有效（设备码等待期）
     let restored = false;
     const restore = () => {
       if (restored) return; restored = true;
-      console.log = origLog; console.warn = origWarn; console.error = origErr;
+      for (const m of methods) console[m] = orig[m];
       if (this._msaTimer) clearTimeout(this._msaTimer);
     };
-    console.log = function (...a) { sniff(a.map((x) => String(x)).join(' ')); return origLog.apply(console, a); };
-    console.warn = function (...a) { sniff(a.map((x) => String(x)).join(' ')); return origWarn.apply(console, a); };
-    console.error = function (...a) { sniff(a.map((x) => String(x)).join(' ')); return origErr.apply(console, a); };
+    // 包装各方法：转发到面板日志，同时保持原输出（systemd journal 也能看到）
+    for (const m of methods) {
+      console[m] = function (...a) { sniff(a.map((x) => String(x)).join(' ')); return orig[m].apply(console, a); };
+    }
     if (this._msaTimer) clearTimeout(this._msaTimer);
     this._msaTimer = setTimeout(restore, 150000);
   }
@@ -215,13 +229,14 @@ class AfkBot {
 
   /**
    * 处理聊天消息：匹配 tpa / tpahere 请求正则后自动接受或拒绝。
+   * 若开启“白名单模式”(tpaWhiteListOnly)，仅接受白名单内玩家的请求；白名单外一律忽略（不自动接受也不拒绝）。
    */
   handleChat(msg) {
     if (!this.online) return;
     const hit = matchRequest(this.tpaRules, msg);
     if (!hit) return;
-    const { rule, match } = hit;
-    this.log.debug(`命中传送请求正则 "${match}" (${rule.type})`);
+    const { rule, match, player } = hit;
+    this.log.debug(`命中传送请求正则 "${match}" (${rule.type}${player ? `，请求者 ${player}` : ''})`);
 
     // ignore 类型：不自动处理
     if (rule.type === 'ignore') {
@@ -229,23 +244,50 @@ class AfkBot {
       return;
     }
 
-    // accept: true -> 发接受命令；false -> 发拒绝命令
+    // ---- TPA 白名单模式 ----
+    const wlOnly = this.cfg.tpaWhiteListOnly === true;
+    if (wlOnly) {
+      const wl = Array.isArray(this.cfg.tpaWhiteListPlayers) ? this.cfg.tpaWhiteListPlayers.map((n) => String(n).trim().toLowerCase()) : [];
+      // 无法识别请求者，或未配置白名单 → 一律不理会
+      if (!player) {
+        this.log.debug(`白名单模式下无法识别请求者，忽略: ${match}`);
+        return;
+      }
+      if (wl.length === 0) {
+        this.log.debug(`白名单模式下未配置白名单，忽略请求者 ${player}`);
+        return;
+      }
+      if (!wl.includes(player.toLowerCase())) {
+        this.log.info(`TPA 请求来自白名单外玩家 ${player}（不在白名单），已忽略`);
+        return;
+      }
+      // 白名单内：一律自动接受
+      const cmd = rule.requestCommand;
+      this.log.info(`TPA 请求来自白名单内玩家 ${player}，自动接受 → ${cmd}`);
+      this._sendTpaCmd(rule, cmd, player);
+      return;
+    }
+
+    // ---- 普通模式（无白名单过滤，按规则接受/拒绝） ----
     const decision = rule.accept !== false;
     const cmd = decision ? rule.requestCommand : rule.denyCommand;
     const label = decision ? '接受' : '拒绝';
     this.log.info(`检测到 ${rule.type === 'tpahere' ? 'tpahere' : 'tpa'} 请求，自动${label} → ${cmd}`);
+    this._sendTpaCmd(rule, cmd, player);
+  }
 
-    // 发送前冷却，避免瞬间重复触发刷屏（同一规则 3s 内只发一次）
+  /** 发送接受/拒绝命令（带 3s 冷却） */
+  _sendTpaCmd(rule, cmd, player) {
+    if (!this.online || !this.bot) return;
     const now = Date.now();
     const key = `${rule.type}:${cmd}`;
     if (this._lastTpaCmd && this._lastTpaCmd.key === key && now - this._lastTpaCmd.ts < 3000) {
       return;
     }
     this._lastTpaCmd = { key, ts: now };
-
     try {
       this.bot.chat(cmd);
-      this.emit('tpa', { type: rule.type, action: decision ? 'accept' : 'deny', command: cmd });
+      this.emit('tpa', { type: rule.type, action: cmd === rule.requestCommand ? 'accept' : 'deny', command: cmd, player: player || null });
     } catch (e) {
       this.log.error(`发送 ${cmd} 失败: ${e && e.message}`);
     }

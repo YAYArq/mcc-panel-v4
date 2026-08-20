@@ -154,16 +154,23 @@ class BotsManager {
     return { ok: true, message: `已创建并启动实例: ${scfg.name}` };
   }
 
-  /** 更新单实例配置并热重载（scfg 为最新完整配置） */
+  /**
+   * 更新单实例配置并热重载（scfg 为最新完整配置；支持改名：name 为旧名）
+   */
   updateServer(name, scfg) {
-    if (scfg.name !== name) return { ok: false, message: 'name 不可修改' };
-    const exists = this.bots.has(name);
+    const renamed = scfg.name !== name;
+    // 改名时，让 _spawn 按旧名清理旧实例（它内部按 scfg.name 判断，需先删旧 key）
+    if (renamed && this.bots.has(name)) {
+      try { this.bots.get(name).stop(); } catch (e) { /* ignore */ }
+      this.bots.delete(name);
+    }
+    const exists = this.bots.has(name) || renamed;
     const bot = this._spawn(scfg);
-    this.log.info(`已热重载实例配置: ${name}`);
+    this.log.info(renamed ? `实例已改名 ${name} → ${scfg.name} 并热重载` : `已热重载实例配置: ${name}`);
     if (scfg.enabled !== false) {
       bot.start();
     }
-    return { ok: true, message: `实例[${name}] 配置已应用${exists ? '（已重启生效）' : ''}` };
+    return { ok: true, message: `实例[${renamed ? name + '→' + scfg.name : name}] 配置已应用${exists ? '（已重启生效）' : ''}` };
   }
 
   /** 删除实例（停止并移除）；scfg 可带 enabled 判断 */

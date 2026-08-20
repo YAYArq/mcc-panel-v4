@@ -78,6 +78,9 @@ class ConfigStore {
       version: scfg.version || undefined,
       acceptTpa: scfg.acceptTpa !== false,
       tpa: scfg.tpa || {},
+      // TPA 白名单：true 时仅接受白名单内玩家的请求；白名单为空则一律不理会
+      tpaWhiteListOnly: scfg.tpaWhiteListOnly === true,
+      tpaWhiteListPlayers: Array.isArray(scfg.tpaWhiteListPlayers) ? scfg.tpaWhiteListPlayers : [],
       scheduledCommands: Array.isArray(scfg.scheduledCommands) ? scfg.scheduledCommands : [],
       scheduledActions: Array.isArray(scfg.scheduledActions) ? scfg.scheduledActions : [],
       botOptions: scfg.botOptions || {}
@@ -103,19 +106,31 @@ class ConfigStore {
     let target = servers.find((s) => s && typeof s === 'object' && s.name === name);
     if (!target) return { ok: false, message: `实例不存在: ${name}` };
 
-    // 允许更新的字段白名单
-    const keys = ['host', 'port', 'username', 'auth', 'version', 'acceptTpa', 'tpa', 'scheduledCommands', 'scheduledActions', 'botOptions', 'enabled'];
+    // 允许更新的字段白名单（name 单独处理以支持改名）
+    const keys = ['host', 'port', 'username', 'auth', 'version', 'acceptTpa', 'tpa', 'tpaWhiteListOnly', 'tpaWhiteListPlayers', 'scheduledCommands', 'scheduledActions', 'botOptions', 'enabled'];
     for (const k of keys) {
       if (patch[k] !== undefined) target[k] = patch[k];
     }
+    // 实例名修改（支持改名）：校验非空且不与他实例冲突
+    let renamed = false;
+    if (patch.name !== undefined) {
+      const newName = String(patch.name).trim();
+      if (!newName) return { ok: false, message: 'name 不能为空' };
+      if (newName !== name) {
+        if (servers.some((s) => s && typeof s === 'object' && s !== target && s.name === newName)) {
+          return { ok: false, message: `实例名已存在: ${newName}` };
+        }
+        target.name = newName;
+        renamed = true;
+      }
+    }
     if (target.port !== undefined) target.port = Number(target.port) || 25565;
-    if (target.name !== undefined && target.name !== name) return { ok: false, message: 'name 不可修改' };
     // 规范化必填
     if (!target.host || !target.username) return { ok: false, message: 'host 与 username 不能为空' };
 
     json.servers = servers;
     this._write(json);
-    return { ok: true, message: '配置已保存', server: target };
+    return { ok: true, message: renamed ? `已保存，实例名由「${name}」改为「${target.name}」` : '配置已保存', server: target, renamed, oldName: name };
   }
 
   removeServer(name) {

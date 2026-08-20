@@ -253,6 +253,7 @@
     const d = await api('/api/instances/' + encodeURIComponent(currentInstance) + '/config');
     configCache = (d && d.config) || {};
     const c = configCache;
+    // name 可修改（改名后热重载），还原为原配置名
     $('cf-name').value = c.name || '';
     $('cf-host').value = c.host || '';
     $('cf-port').value = c.port || '';
@@ -261,6 +262,8 @@
     $('cf-version').value = c.version || '';
     $('cf-acceptTpa').value = String(c.acceptTpa !== false);
     $('cf-host').removeAttribute('disabled');
+    $('cf-wl-only').value = String(c.tpaWhiteListOnly === true);
+    $('cf-wl-players').value = Array.isArray(c.tpaWhiteListPlayers) ? c.tpaWhiteListPlayers.join(', ') : '';
     tpaRows = ((c.tpa && c.tpa.patterns) || []).map(p => typeof p === 'string' ? { regex: p } : { ...p });
     scmdRows = (c.scheduledCommands || []).map(x => ({ ...x }));
     sactRows = (c.scheduledActions || []).map(x => ({ ...x }));
@@ -279,13 +282,18 @@
 
   $('cf-save').addEventListener('click', async () => {
     if (!configCache) return;
+    // 白名单玩家：逗号分隔输入解析为数组
+    const wlPlayers = ($('cf-wl-players').value || '').split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
     const patch = {
+      name: $('cf-name').value.trim() || configCache.name,
       host: $('cf-host').value.trim(),
       port: Number($('cf-port').value) || 25565,
       username: $('cf-username').value.trim(),
       auth: $('cf-auth').value,
       version: $('cf-version').value.trim() || undefined,
       acceptTpa: $('cf-acceptTpa').value === 'true',
+      tpaWhiteListOnly: $('cf-wl-only').value === 'true',
+      tpaWhiteListPlayers: wlPlayers,
       tpa: { ...(configCache.tpa || {}), patterns: tpaRows.filter(r => r.regex) },
       scheduledCommands: scmdRows.filter(r => r.command),
       scheduledActions: sactRows.filter(r => r.type && r.every)
@@ -294,6 +302,7 @@
     $('cf-result').textContent = d.message || (d.error || '');
     $('cf-result').className = 'command-result ' + (d.ok ? 'ok' : 'err');
     await new Promise(r => setTimeout(r, 600));
+    if (configCache.name !== patch.name) { currentInstance = patch.name; configCache.name = patch.name; $('detail-title').textContent = patch.name + ' · 实例详情'; }
     load();
   });
   $('cf-discard').addEventListener('click', () => { if (currentInstance) loadConfigTab(); });

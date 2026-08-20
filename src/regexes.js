@@ -109,16 +109,17 @@ function resolveRequestRules(server, logger) {
 
 /**
  * 匹配一条聊天消息是否命中“有人请求传送”的规则。
- * @returns {{rule:object, match:string}|null}
+ * @returns {{rule:object, match:string, player:string|null}|null}
+ *   player: 正则第一个捕获组（若有）——用于 TPA 白名单判断（请求者玩家名）
  */
 function matchRequest(rules, text) {
   const plain = toPlain(text);
   if (!plain) return null;
-  // 只匹配与传送相关的消息关键词，降低误判（优先流式）。规则本身已带正则。
   for (const rule of rules) {
     const m = rule.reg.exec(plain);
     if (m) {
-      return { rule, match: m[0] };
+      const player = m.length > 1 ? (m[1] || null) : null;
+      return { rule, match: m[0], player: player ? player.trim() : null };
     }
   }
   return null;

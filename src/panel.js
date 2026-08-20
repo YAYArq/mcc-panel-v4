@@ -91,6 +91,8 @@ function startPanel(opts = {}) {
       name: scfg.name, host: scfg.host, port: scfg.port, username: scfg.username,
       auth: scfg.auth, version: scfg.version || null, enabled: scfg.enabled !== false,
       acceptTpa: scfg.acceptTpa !== false, tpa: scfg.tpa || {},
+      tpaWhiteListOnly: scfg.tpaWhiteListOnly === true,
+      tpaWhiteListPlayers: Array.isArray(scfg.tpaWhiteListPlayers) ? scfg.tpaWhiteListPlayers : [],
       scheduledCommands: scfg.scheduledCommands || [], scheduledActions: scfg.scheduledActions || [],
       botOptions: scfg.botOptions || {}
     };
@@ -180,7 +182,8 @@ function startPanel(opts = {}) {
         const body = await readBody(req);
         const saved = store.updateServer(name, body);
         if (!saved.ok) return json(res, 400, saved);
-        const latest = store.getServer(name);
+        // 改名后旧 name 已不存在，需用 updateServer 返回的最新 server 对象
+        const latest = saved.renamed ? saved.server : store.getServer(name);
         const reload = manager.updateServer(name, latest);
         return json(res, reload.ok ? 200 : 400, { ok: true, message: saved.message + (reload.ok ? '，已热重载' : '，但重载失败：' + reload.message) });
       }

@@ -105,7 +105,7 @@
         <section id="tab-config" class="tab-panel hidden">
           <p class="panel-hint">每个实例单独配置。登录方式：offline=离线；microsoft=微软账号（登录时去 https://www.microsoft.com/link 输入设备码，见日志）。</p>
           <div class="config-form">
-            <label class="form-label">实例名 · name <input id="cf-name" class="input mono-input" disabled></label>
+            <label class="form-label">实例名 · name <input id="cf-name" class="input mono-input" title="可修改（改名后该实例会热重载）"></label>
             <label class="form-label">服务器地址 · host <input id="cf-host" class="input mono-input"></label>
             <label class="form-label">端口 · port <input id="cf-port" type="number" class="input"></label>
             <label class="form-label">游戏名 · username <input id="cf-username" class="input mono-input"></label>
@@ -121,6 +121,19 @@
             </label>
           </div>
           <p class="auth-note" id="auth-note" hidden>微软账号说明：保存/启动后，系统会用设备码登录。请打开 <b>https://www.microsoft.com/link</b>，输入日志里显示的 Code 完成授权（登录一次后 token 会缓存）。</p>
+
+          <div class="panel-title" style="margin-top:18px">TPA 接取白名单 · 仅接受白名单内玩家的请求</div>
+          <p class="panel-hint">开启后：只自动接受<b>白名单内玩家</b>发来的 tpa/tpahere；白名单外玩家一律忽略（不自动接受也不拒绝）。关闭则按上方规则对所有请求接取。白名单玩家用逗号分隔。</p>
+          <div class="vis-row">
+            <span class="vis-idx">⚙</span>
+            <label class="form-label" style="flex-direction:row;align-items:center;gap:8px;display:flex;margin:0;flex:0 0 auto">白名单模式
+              <select id="cf-wl-only" class="select vis-select">
+                <option value="true">启用</option>
+                <option value="false">关闭</option>
+              </select>
+            </label>
+            <input id="cf-wl-players" class="input mono-input vis-input" placeholder="白名单玩家，逗号分隔，如：Steve,Alex" style="flex:2" />
+          </div>
 
           <div class="panel-title" style="margin-top:18px">TPA 请求正则 · TPA 规则（按你服务器插件提示文本匹配后自动接受/拒绝）</div>
           <p class="panel-hint">每条规则：regex 匹配聊天消息；type = tpa(请求传过去) / tpahere(请求传过来) / ignore(忽略)；accept=false 时命中自动发拒绝命令。</p>
